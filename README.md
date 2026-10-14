@@ -72,7 +72,7 @@ write checks role and ownership on the server; uploaded images are validated as 
    | `GOOGLE_CLIENT_ID` | optional, enables “Continue with Google” (see below) |
    | `SEED_DEMO` | optional, `true` to start with demo listings |
 
-4. **Generate a domain** (*Settings → Networking → Generate Domain*), open it, and the owner signs in at `/owner`.
+4. **Generate a domain** (*Settings → Networking → Generate Domain*, port `3000`). This is a one-time click — Railway does not let a repo file create it. The link then stays the same across every redeploy, and each deploy's logs print `Live at https://…`. The owner signs in at `/owner`.
 
 Only run **one replica**: SQLite and the in-memory live-chat streams belong to a single instance.
 

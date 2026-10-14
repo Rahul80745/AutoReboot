@@ -33,6 +33,11 @@ setInterval(purgeExpiredSessions, 3600_000).unref();
 scheduleBackups();
 
 const server = createApp({ demo }).listen(PORT, '0.0.0.0', () => console.log(`Autoreboot running on port ${PORT}${isProd ? '' : ` — http://localhost:${PORT}`}`));
+server.on('listening', () => {
+  // Railway sets RAILWAY_PUBLIC_DOMAIN once a public domain exists for the service
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) console.log(`\n  ➜ Live at https://${process.env.RAILWAY_PUBLIC_DOMAIN}  (owner sign-in: /owner)\n`);
+  else if (process.env.RAILWAY_ENVIRONMENT) console.log('\n  No public link yet. In Railway: service → Settings → Networking → Generate Domain.\n');
+});
 server.keepAliveTimeout = 65_000; // longer than typical proxy idle timeouts
 server.headersTimeout = 66_000;
 
