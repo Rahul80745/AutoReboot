@@ -249,3 +249,24 @@ test('ad title becomes the listing title', async () => {
   // colour picker field is gone
   assert.ok(!(await u('GET', '/api/bootstrap')).data.formFields.some((f) => f.key === 'color'));
 });
+
+test('owner can hide or make optional the model number', async () => {
+  const u = client(), o = client();
+  await u('POST', '/api/auth/register', { ...newUser, email: 'model@example.com', phone: '9678912345' });
+  await o('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'owner' });
+  const { model, title, ...bare } = vehicle;
+  assert.equal((await u('POST', '/api/listings', bare)).data.field, 'model'); // required by default
+  const hid = await o('PATCH', '/api/owner/form-fields/model', { enabled: false });
+  assert.equal(hid.status, 200);
+  assert.equal(hid.data.fields.find((f) => f.key === 'model').enabled, false);
+  const made = await u('POST', '/api/listings', { ...bare, title: '' });
+  // title is still required unless provided
+  assert.equal(made.data.field, 'title');
+  const ok = await u('POST', '/api/listings', { ...bare, title: 'Pickup in great shape' });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.data.listing.model, '');
+  await o('PATCH', '/api/owner/form-fields/title', { required: false });
+  assert.equal((await u('POST', '/api/listings', bare)).data.listing.title, 'Tata');
+  await o('PATCH', '/api/owner/form-fields/title', { required: true });
+  await o('PATCH', '/api/owner/form-fields/model', { enabled: true });
+});

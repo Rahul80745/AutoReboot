@@ -64,7 +64,8 @@ function validateListing(d, fields, prev = null) {
     out.subtype = d.subtype;
   } else out.subtype = null;
   out.brand = str(d.brand, 60); if (!out.brand) throw bad(`Choose a ${label('brand', 'brand').toLowerCase()}`, 'brand');
-  out.model = str(d.model, 80); if (!out.model) throw bad(`Enter the ${label('model', 'model').toLowerCase()}`, 'model');
+  out.model = str(d.model, 80);
+  if (on('model') && F.model.required && !out.model) throw bad(`${F.model.label} is required`, 'model');
   out.city = str(d.city, 80); if (!out.city) throw bad('Enter the city', 'city');
   out.state = str(d.state, 60); if (!STATES.includes(out.state)) throw bad('Choose a state', 'state');
   const now = new Date().getFullYear();
@@ -116,7 +117,7 @@ function validateListing(d, fields, prev = null) {
     if (v !== undefined) out.extras[f.key] = v;
   }
   // Ad title: shown as the listing's title. Falls back to "Brand Model" when optional and left empty.
-  const autoOf = (b, m) => `${b} ${m}`.replace(/^Tata Tata/, 'Tata');
+  const autoOf = (b, m) => `${b} ${m}`.trim().replace(/^Tata Tata/, 'Tata');
   const adTitle = str(d.title, 100);
   required('title', !adTitle);
   out.title = !adTitle || (prev && adTitle === prev.title && prev.title === autoOf(prev.brand, prev.model)) ? autoOf(out.brand, out.model) : adTitle;

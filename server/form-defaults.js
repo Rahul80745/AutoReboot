@@ -14,7 +14,7 @@ const F = (key, label, type, group, o = {}) => ({ key, label, type, group, locke
 export const DEFAULT_FIELDS = [
   F('subtype', 'Truck type', 'subtype', 'vehicle', { locked: true }),
   F('brand', 'Brand', 'brand', 'vehicle', { locked: true }),
-  F('model', 'Model number', 'text', 'vehicle', { locked: true }),
+  F('model', 'Model number', 'text', 'vehicle', { required: true }),
   F('title', 'Ad title', 'text', 'vehicle', { required: true }),
   F('year', 'Model year', 'number', 'details', { locked: true }),
   F('km', 'KM driven', 'number', 'details', { locked: true }),

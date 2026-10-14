@@ -159,6 +159,7 @@ if (!db.prepare('PRAGMA table_info(listings)').all().some((c) => c.name === 'ext
 /** Insert any built-in form fields that are missing (never overwrites owner edits). */
 export function ensureFormFields() {
   db.prepare("DELETE FROM form_fields WHERE key = 'color'").run(); // colour picker was removed
+  db.prepare("UPDATE form_fields SET locked = 0 WHERE key = 'model'").run(); // model number can now be hidden by the owner
   const have = new Set(db.prepare('SELECT key FROM form_fields').all().map((r) => r.key));
   const ins = db.prepare('INSERT INTO form_fields (key,label,type,grp,required,enabled,locked,builtin,placeholder,options,sort) VALUES (?,?,?,?,?,1,?,1,?,?,?)');
   DEFAULT_FIELDS.forEach((f, i) => {

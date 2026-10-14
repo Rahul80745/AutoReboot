@@ -1653,7 +1653,7 @@ Views.sell = ({id}) => {
     : f.key==='load' && f.label==='Load capacity' && d.category==='buses' ? 'Seating' : f.label;
   const phOf = f => {
     if (f.placeholder) return f.placeholder; const sp = spec(), y = new Date().getFullYear();
-    if (f.key==='title') return d.brand && d.model ? `${d.brand} ${d.model} – e.g. single owner, new tyres` : 'e.g. Tata LPT 1613 in excellent condition';
+    if (f.key==='title') return d.brand ? `${d.brand} ${d.model||''} – e.g. single owner, new tyres`.replace('  ',' ') : 'e.g. Tata LPT 1613 in excellent condition';
     return {year:String(y-3), km:isHours()?'e.g. 2400':'e.g. 85000', regNo:'e.g. TS 07 UF 1234', engine:sp.engine, power:sp.power, load:sp.load, body:sp.body, price:'e.g. 1250000', city:'e.g. Khammam'}[f.key] || '';
   };
   const REQ = ' <span style="color:var(--primary)">*</span>';
