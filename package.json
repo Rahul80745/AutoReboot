@@ -1,0 +1,18 @@
+{
+  "name": "spidy-marketplace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Spidy — full-stack commercial vehicle marketplace (Express + SQLite, owner & user sign-in)",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --watch --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.js",
+    "create-owner": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning scripts/create-owner.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
