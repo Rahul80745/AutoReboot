@@ -151,6 +151,21 @@ CREATE TABLE IF NOT EXISTS form_fields (
 );
 `);
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS banners (
+  id          TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  image       TEXT NOT NULL DEFAULT '',
+  button_text TEXT NOT NULL DEFAULT '',
+  link        TEXT NOT NULL DEFAULT '',
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  sort        INTEGER NOT NULL DEFAULT 0,
+  created_at  INTEGER NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+`);
+
 // migrations for databases created by earlier versions
 if (!db.prepare('PRAGMA table_info(listings)').all().some((c) => c.name === 'extras')) {
   db.exec("ALTER TABLE listings ADD COLUMN extras TEXT NOT NULL DEFAULT '{}'");
@@ -240,3 +255,12 @@ export const formFieldRow = (f) => f && ({
   locked: !!f.locked, builtin: !!f.builtin, placeholder: f.placeholder, options: JSON.parse(f.options), sort: f.sort,
 });
 export const allFormFields = () => db.prepare('SELECT * FROM form_fields ORDER BY sort, key').all().map(formFieldRow);
+
+// Banner metadata (the image itself is served from /api/banners/:id/image so polling stays light).
+export const BANNER_COLS = 'id,title,description,button_text,link,enabled,sort,updated_at,(length(image) > 0) AS has_image';
+export const bannerRow = (b) => b && ({
+  id: b.id, title: b.title, description: b.description, buttonText: b.button_text, link: b.link,
+  enabled: !!b.enabled, hasImage: !!b.has_image, v: b.updated_at, sort: b.sort,
+});
+export const publicBanners = () => db.prepare(`SELECT ${BANNER_COLS} FROM banners WHERE enabled = 1 ORDER BY sort, created_at`).all().map(bannerRow);
+export const allBanners = () => db.prepare(`SELECT ${BANNER_COLS} FROM banners ORDER BY sort, created_at`).all().map(bannerRow);

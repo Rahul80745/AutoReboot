@@ -135,6 +135,7 @@ a{color:inherit;text-decoration:none}
 .hero{position:relative;border-radius:var(--r-lg);overflow:hidden;margin-top:14px;aspect-ratio:16/8.4;min-height:230px;max-height:430px;width:100%;background:#cfe4f5;box-shadow:var(--shadow)}
 .hero-slide{position:absolute;inset:0;opacity:0;transition:opacity .7s ease}
 .hero-slide.on{opacity:1}
+.hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero-slide svg.scene{position:absolute;inset:0;width:100%;height:100%}
 .hero-copy{position:absolute;left:0;top:0;bottom:0;width:min(560px,62%);padding:clamp(18px,4vw,40px);display:flex;flex-direction:column;justify-content:center;color:#101B3B;background:linear-gradient(90deg,rgba(255,255,255,.88),rgba(255,255,255,.55) 70%,transparent)}
 .hero-copy h2{font-size:clamp(20px,3.6vw,38px);line-height:1.08;margin:0 0 10px;font-weight:800;letter-spacing:-.025em}
@@ -905,7 +906,7 @@ const SWATCHES = ['#F3F4F7','#1F5FD1','#E9B21C','#D63A2F','#1BA39C','#E2541B','#
    that is hydrated from /api/bootstrap and polled, so views can stay synchronous. */
 class ApiError extends Error { constructor(msg, field){ super(msg); this.field = field; } }
 
-const Store = { ready:false, me:null, demo:false, formFields:[], users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
+const Store = { ready:false, me:null, demo:false, formFields:[], banners:[], users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
 const serverNow = () => Date.now() + Store.skew;
 
 async function http(method, url, body){
@@ -926,7 +927,7 @@ const Sync = {
   /* merge a /api/bootstrap payload into the cache; returns what changed so the UI can refresh */
   apply(d){
     const prevMe = Store.me && Store.me.id, prevMsgs = Store.messages.length, prevNoti = Store.notifications.length, prevChats = Store.chats.length;
-    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.demo = !!d.demo; Store.me = d.user;
+    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.banners = d.banners || []; Store.demo = !!d.demo; Store.me = d.user;
     Store.users = {}; (d.users||[]).forEach(u => Store.users[u.id] = u);
     const keep = new Set(d.listingIds), byId = new Map(Store.listings.filter(l => keep.has(l.id)).map(l => [l.id, l]));
     d.listings.forEach(l => { const old = byId.get(l.id); byId.set(l.id, old ? {...l, views:Math.max(l.views, old.views||0)} : l); });
@@ -1092,6 +1093,11 @@ const API = (() => {
     patchField: (key, p) => http('PATCH', `/api/owner/form-fields/${encodeURIComponent(key)}`, p).then(r => (Store.formFields = r.fields)),
     moveField: (key, dir) => http('POST', `/api/owner/form-fields/${encodeURIComponent(key)}/move`, {dir}).then(r => (Store.formFields = r.fields)),
     deleteField: key => http('DELETE', `/api/owner/form-fields/${encodeURIComponent(key)}`).then(r => (Store.formFields = r.fields)),
+    banners: () => http('GET', '/api/owner/banners').then(r => r.banners),
+    addBanner: p => http('POST', '/api/owner/banners', p).then(r => r.banners),
+    patchBanner: (id, p) => http('PATCH', `/api/owner/banners/${encodeURIComponent(id)}`, p).then(r => r.banners),
+    moveBanner: (id, dir) => http('POST', `/api/owner/banners/${encodeURIComponent(id)}/move`, {dir}).then(r => r.banners),
+    deleteBanner: id => http('DELETE', `/api/owner/banners/${encodeURIComponent(id)}`).then(r => r.banners),
     patchFinance: (id, status) => http('PATCH', `/api/owner/finance/${encodeURIComponent(id)}`, {status}),
   };
 
@@ -1223,7 +1229,13 @@ const HERO = [
 /* ------------------------------- VIEWS ------------------------------ */
 const Views = {};
 
+/* Banner slides: the owner's banners if any are shown, otherwise the built-in slides. */
+const heroSlides = () => Store.banners.length
+  ? Store.banners.map((b,i) => ({h:b.title, p:b.description, cta:b.buttonText || (b.link ? 'Learn more' : ''), href:b.link, img:b.hasImage ? `/api/banners/${b.id}/image?v=${b.v}` : '', art:i%4}))
+  : HERO.map((s,i) => ({h:s.h, p:s.p, cta:s.cta, href:s.href, img:'', art:i}));
+
 Views.home = () => {
+  const slides = heroSlides();
   const recent = API.listings.querySync({}).slice(0, 12);
   const total = API.listings.count({});
   return { nav:'home', html: `
@@ -1234,8 +1246,8 @@ Views.home = () => {
       <span class="home-icons">${favBellRight()}</span>
     </div>
     <section class="hero" aria-roledescription="carousel">
-      ${HERO.map((s,i)=>`<div class="hero-slide ${i===0?'on':''}" data-slide="${i}">${heroScene(i)}<div class="hero-copy"><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p><a href="${s.href}" class="btn btn-primary">${esc(s.cta)}</a></div></div>`).join('')}
-      <div class="hero-dots">${HERO.map((_,i)=>`<button class="${i===0?'on':''}" data-dot="${i}" aria-label="Slide ${i+1}"></button>`).join('')}</div>
+      ${slides.map((s,i)=>`<div class="hero-slide ${i===0?'on':''}" data-slide="${i}">${s.img?`<img class="hero-img" src="${esc(s.img)}" alt=""${i?' loading="lazy"':''}>`:heroScene(s.art)}<div class="hero-copy"><h2>${esc(s.h)}</h2>${s.p?`<p>${esc(s.p)}</p>`:''}${s.href&&s.cta?`<a href="${esc(s.href)}" class="btn btn-primary"${/^https?:/i.test(s.href)?' target="_blank" rel="noopener noreferrer"':''}>${esc(s.cta)}</a>`:''}</div></div>`).join('')}
+      ${slides.length>1?`<div class="hero-dots">${slides.map((_,i)=>`<button class="${i===0?'on':''}" data-dot="${i}" aria-label="Slide ${i+1}"></button>`).join('')}</div>`:''}
     </section>
     <div class="cats">${CATS.map(c=>`<a class="cat" href="#/c/${c.id}"><div class="art">${catArt(c.id, c.id==='trucks'?'trailers':null, c.id==='trucks'?'#1D4ED8':c.color)}</div>${esc(c.name)}</a>`).join('')}</div>
     <div class="bs-row">
@@ -1252,12 +1264,12 @@ Views.home = () => {
       <div><span class="t-ic">${I('lock','lg')}</span>Private chat, number stays hidden</div>
       <div><span class="t-ic">${I('headset','lg')}</span>Finance and support team</div>
     </div>
-    <div class="footer">Autoreboot · Commercial vehicle marketplace · Data is stored on this device</div>
+    <div class="footer">Autoreboot · Commercial vehicle marketplace</div>
   </div>`,
   mount(root){
     let i = 0, timer;
     const show = n => { i = n; $$('.hero-slide',root).forEach((s,k)=>s.classList.toggle('on',k===n)); $$('[data-dot]',root).forEach((d,k)=>d.classList.toggle('on',k===n)); };
-    const start = () => { clearInterval(timer); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) timer = setInterval(()=>show((i+1)%HERO.length), 5200); };
+    const start = () => { clearInterval(timer); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) if (slides.length > 1) timer = setInterval(()=>show((i+1)%slides.length), 5200); };
     $$('[data-dot]',root).forEach(d=>d.onclick=()=>{ show(+d.dataset.dot); start(); });
     const hero = $('.hero',root); hero.onmouseenter=()=>clearInterval(timer); hero.onmouseleave=start; start();
     App.cleanup.push(()=>clearInterval(timer));
@@ -1844,7 +1856,6 @@ Views.auth = (_, q, mode='login', role='user') => {
     <div class="auth-card">
       <a href="#/" class="link" style="color:var(--ink-2)">${I('back','xs')} Continue browsing</a>
       <h1>${isOwner?'Owner sign in':mode==='login'?'Log in':'Create your account'}</h1><p class="muted" style="margin:0">${isOwner?'Restricted to the marketplace owner.':mode==='login'?'Chat with sellers, save vehicles and request finance.':'It takes less than a minute.'}</p>
-      <div class="role-switch" aria-label="Account type"><a href="#/login" class="${isOwner?'':'on'}">${I('user','sm')} User</a><a href="#/owner/login" class="${isOwner?'on':''}">${I('shieldCheck','sm')} Owner</a></div>
       ${isOwner?'':`<div class="tabs" role="tablist"><button class="${mode==='login'?'on':''}" data-mode="login" role="tab">Log in</button><button class="${mode==='signup'?'on':''}" data-mode="signup" role="tab">Sign up</button></div>`}
       <form data-auth novalidate>
         ${mode==='signup'&&!isOwner?`<div class="field"><label for="a_name">Full name</label><input class="input" id="a_name" name="name" autocomplete="name" placeholder="e.g. Ravi Kumar"><div class="err-msg" data-err="name" hidden></div></div>
@@ -1878,7 +1889,7 @@ Views.auth = (_, q, mode='login', role='user') => {
 };
 /* ---- owner console ---- */
 Views.owner = ({tab='overview'}) => {
-  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests'],['form','Sell form']];
+  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests'],['banners','Banners'],['form','Sell form']];
   const me = API.auth.me();
   return { nav:'owner', html: `${topbar({title:'Owner dashboard', sub:`Signed in as ${me.email}`, right:`<button class="btn btn-ghost btn-sm" data-ologout>${I('logout','xs')} Log out</button>`})}
     <div class="wrap page"><div class="ptabs">${TABS.map(([k,n])=>`<a class="chip ${tab===k?'on':''}" href="#/owner/${k}">${n}</a>`).join('')}</div>
@@ -1963,6 +1974,57 @@ Views.owner = ({tab='overview'}) => {
         : emptyState('bank','No finance requests yet','Requests from buyers appear here.');
       $$('[data-fs]',body).forEach(s => s.onchange = async () => { await act(() => API.owner.patchFinance(s.closest('[data-fid]').dataset.fid, s.value), 'Status updated'); });
     }).catch(fail);
+
+    if (tab === 'banners'){
+      let list = [];
+      const draw = () => {
+        body.innerHTML = `<div class="card panel" style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>Home banner</b><div class="muted" style="font-size:13px">Slides shown at the top of the home page: a photo, a title and a short description, with an optional button. Best photo size is wide, about 1600 × 840. If you have no banners the default slides are shown.</div></div><button class="btn btn-primary btn-sm" data-add>${I('plus','xs')} Add banner</button></div>`
+          + (list.length ? list.map((b,i) => `<div class="card my-row" data-bid="${esc(b.id)}" style="${b.enabled?'':'opacity:.65'}">
+            <div class="thumb" style="width:170px;aspect-ratio:16/8.4;background:var(--line-2);display:flex;align-items:center;justify-content:center">${b.hasImage?`<img src="/api/banners/${esc(b.id)}/image?v=${b.v}" alt="">`:'<span class="muted" style="font-size:12px">No photo</span>'}</div>
+            <div class="mid"><h4>${esc(b.title)} ${b.enabled?'':'<span class="status removed">Hidden</span>'}</h4>
+              <div class="muted" style="font-size:13px">${esc(b.description) || 'No description'}</div>
+              <div class="muted" style="font-size:12.5px">${b.link ? `Button “${esc(b.buttonText || 'Learn more')}” → ${esc(b.link)}` : 'No button'}</div></div>
+            <div class="acts" style="align-items:center"><label class="chk"><input type="checkbox" data-t="enabled" ${b.enabled?'checked':''}> Shown</label>
+              <button class="btn btn-ghost btn-sm" data-a="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn btn-ghost btn-sm" data-a="down" ${i===list.length-1?'disabled':''} aria-label="Move down">↓</button>
+              <button class="btn btn-ghost btn-sm" data-a="edit">${I('edit','xs')} Edit</button><button class="btn btn-ghost btn-sm" data-a="delete" aria-label="Delete banner">${I('trash','xs')}</button></div></div>`).join('')
+          : emptyState('image','No banners yet','Add your first banner. Until then, visitors see the default slides.'));
+      };
+      const load = () => API.owner.banners().then(r => { list = r; draw(); }).catch(fail);
+      const apply = (p, msg) => p.then(r => { list = r; draw(); if (msg) toast(msg); Sync.pull().catch(()=>{}); }).catch(e => { toast(e.message,'bad'); load(); });
+      load();
+      function bannerSheet(b){
+        let image; // undefined = keep what is stored, '' = remove, 'data:…' = new photo
+        openSheet(`<h3>${b?'Edit banner':'Add banner'}</h3><form data-bf novalidate>
+          <div class="field"><label>Photo</label><div data-prev style="aspect-ratio:16/8.4;border-radius:12px;overflow:hidden;background:var(--line-2);display:flex;align-items:center;justify-content:center"></div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><label class="btn btn-ghost btn-sm" style="cursor:pointer">${I('camera','xs')} Choose photo<input type="file" accept="image/*" hidden data-file></label><button type="button" class="btn btn-ghost btn-sm" data-rmimg>Remove photo</button></div><div class="err-msg" data-err="image" hidden></div></div>
+          <div class="field"><label for="bn_title">Title</label><input class="input" id="bn_title" name="title" maxlength="80" value="${esc(b?.title||'')}" placeholder="e.g. Festival offers on tippers"><div class="err-msg" data-err="title" hidden></div></div>
+          <div class="field"><label for="bn_desc">Short description <span class="muted" data-count></span></label><textarea class="input" id="bn_desc" name="description" rows="3" maxlength="160" placeholder="One or two lines shown under the title">${esc(b?.description||'')}</textarea></div>
+          <div class="grid2"><div class="field"><label for="bn_btn">Button text <span class="muted">(optional)</span></label><input class="input" id="bn_btn" name="buttonText" maxlength="24" value="${esc(b?.buttonText||'')}" placeholder="e.g. View tippers"></div>
+            <div class="field"><label for="bn_link">Button link <span class="muted">(optional)</span></label><input class="input" id="bn_link" name="link" value="${esc(b?.link||'')}" placeholder="#/list/trucks/tippers or https://…"><div class="err-msg" data-err="link" hidden></div></div></div>
+          <label class="chk" style="display:flex;gap:8px;margin:2px 0 14px"><input type="checkbox" name="enabled" ${b?.enabled===false?'':'checked'}> Show this banner on the home page</label>
+          <button class="btn btn-primary btn-block">${b?'Save banner':'Add banner'}</button></form>`, (el, close) => {
+          const f = $('[data-bf]',el), prev = $('[data-prev]',el);
+          const showPrev = () => { const src = image ? image : (image === undefined && b?.hasImage) ? `/api/banners/${b.id}/image?v=${b.v}` : ''; prev.innerHTML = src ? `<img src="${esc(src)}" alt="" style="width:100%;height:100%;object-fit:cover">` : '<span class="muted" style="font-size:13px">No photo</span>'; };
+          showPrev();
+          const cnt = () => { $('[data-count]',el).textContent = `${f.description.value.length}/160`; }; f.description.oninput = cnt; cnt();
+          $('[data-file]',el).onchange = async e => { const file = e.target.files[0]; e.target.value=''; if (!file) return; try { image = await compressImage(file, 1600, .8); $('[data-err="image"]',el).hidden = true; showPrev(); } catch(er){ const m = $('[data-err="image"]',el); m.textContent = er.message; m.hidden = false; } };
+          $('[data-rmimg]',el).onclick = () => { image = ''; showPrev(); };
+          f.onsubmit = ev => { ev.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true);
+            const p = {title:f.title.value, description:f.description.value, buttonText:f.buttonText.value, link:f.link.value.trim(), enabled:f.enabled.checked};
+            if (image !== undefined) p.image = image;
+            (b ? API.owner.patchBanner(b.id, p) : API.owner.addBanner(p)).then(r => { list = r; draw(); close(); toast(b?'Banner saved':'Banner added'); Sync.pull().catch(()=>{}); })
+              .catch(er => { const m = $(`[data-err="${er.field}"]`,el); if (m){ m.textContent = er.message; m.hidden = false; } else toast(er.message,'bad'); }); };
+        });
+      }
+      body.onclick = async e => {
+        if (e.target.closest('[data-add]')) return bannerSheet(null);
+        const row = e.target.closest('[data-bid]'); if (!row) return; const b = list.find(x => x.id === row.dataset.bid); const a = e.target.closest('[data-a]')?.dataset.a;
+        if (a==='up' || a==='down') return apply(API.owner.moveBanner(b.id, a==='up' ? -1 : 1));
+        if (a==='edit') return bannerSheet(b);
+        if (a==='delete' && await confirmSheet({title:`Delete “${b.title}”?`, body:'It is removed from the home page. This cannot be undone.', ok:'Delete'})) apply(API.owner.deleteBanner(b.id), 'Banner deleted');
+      };
+      body.onchange = e => { const t = e.target.closest('[data-t]'); if (!t) return; apply(API.owner.patchBanner(t.closest('[data-bid]').dataset.bid, {enabled:t.checked}), t.checked ? 'Banner shown' : 'Banner hidden'); };
+    }
 
     if (tab === 'form'){
       const TYPE_LABEL = {subtype:'Dropdown (truck types)', brand:'Dropdown (brands)', text:'Short text', number:'Number', select:'Dropdown', textarea:'Long text', tyres:'Dropdown (tyres)', state:'Dropdown (states)', toggle:'Yes / No', checks:'Checklist', photos:'Photo upload', color:'Colour picker'};

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  db, tx, uid, notify, ensureFormFields, allFormFields, userRow, publicUserRow, listingRow, chatRow, messageRow, notificationRow, financeRow,
+  db, tx, uid, notify, ensureFormFields, allFormFields, publicBanners, allBanners, userRow, publicUserRow, listingRow, chatRow, messageRow, notificationRow, financeRow,
 } from './db.js';
 import {
   COOKIE, hashPassword, verifyPassword, newSalt, createSession, destroySession, destroyUserSessions,
@@ -141,6 +141,8 @@ export function createApp({ demo = true } = {}) {
     next();
   });
   app.get('/favicon.ico', (req, res) => res.status(204).end());
+  // private entry point for the owner; it is not linked from anywhere in the public site
+  app.get(['/owner', '/owner/'], (req, res) => res.redirect(302, '/#/owner/login'));
   app.use(express.json({ limit: '12mb' }));
 
   // CSRF defence in depth: state-changing API calls must be same-origin JSON.
@@ -218,11 +220,6 @@ export function createApp({ demo = true } = {}) {
     else u = db.prepare("SELECT * FROM users WHERE role = 'user' AND is_bot = 0 AND (email = ? OR (? != '' AND length(?) = 10 AND phone = ?))").get(key, phone, phone, phone);
     const ok = await verifyPassword(password, u ? u.salt : DUMMY_SALT, u ? u.pass_hash : '!');
     if (!u || !ok) {
-      // If the credentials are right but belong to the other role, say so (only after the password matched).
-      const other = db.prepare('SELECT * FROM users WHERE email = ? AND is_bot = 0').get(key);
-      if (other && other.role !== as && await verifyPassword(password, other.salt, other.pass_hash)) {
-        throw new HttpError(401, other.role === 'owner' ? 'This is an owner account. Use the Owner sign in.' : 'This is a user account. Use the User sign in.', 'id');
-      }
       throw new HttpError(401, as === 'owner' ? 'Incorrect owner email or password' : 'Incorrect email / mobile number or password', 'password');
     }
     if (u.status !== 'active') throw new HttpError(403, 'This account has been suspended. Contact support.');
@@ -280,7 +277,7 @@ export function createApp({ demo = true } = {}) {
     const changed = db.prepare(`SELECT l.* FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible} AND l.updated_at >= ?`)
       .all(meId, lsince).map(listingRow);
 
-    const out = { now: Date.now(), demo, user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields() };
+    const out = { now: Date.now(), demo, user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields(), banners: publicBanners() };
     const userIds = new Set(db.prepare(`SELECT DISTINCT l.seller_id id FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible}`).all(meId).map((r) => r.id));
     if (me && me.role === 'user') {
       const chats = db.prepare(`SELECT * FROM chats WHERE (buyer_id = ? AND buyer_hidden = 0) OR (seller_id = ? AND seller_hidden = 0) ORDER BY updated_at DESC`).all(meId, meId);
@@ -300,6 +297,14 @@ export function createApp({ demo = true } = {}) {
       ? db.prepare(`SELECT * FROM users WHERE id IN (${idList.map(() => '?').join(',')})`).all(...idList).map((u) => (u.id === meId ? userRow(u) : publicUserRow(u)))
       : [];
     res.json(out);
+  });
+
+  api.get('/banners/:id/image', (req, res) => {
+    const r = db.prepare('SELECT image FROM banners WHERE id = ?').get(req.params.id);
+    const m = r && /^data:(image\/[a-z]+);base64,(.*)$/s.exec(r.image);
+    if (!m) return res.status(404).end();
+    res.set({ 'Content-Type': m[1], 'Cache-Control': 'public, max-age=31536000, immutable' });
+    res.send(Buffer.from(m[2], 'base64'));
   });
 
   /* ------------------------------ listings ------------------------------ */
@@ -558,6 +563,67 @@ export function createApp({ demo = true } = {}) {
     res.json({ ok: true });
   });
 
+
+  /* ---- owner: home-page banner (hero) ads ---- */
+  const cleanLink = (v) => {
+    const l = str(v, 300);
+    if (!l) return '';
+    if (/^#\//.test(l) || /^https?:\/\/[^\s]+$/i.test(l)) return l;
+    throw bad('Link must start with #/ (a page in this app) or https://', 'link');
+  };
+  const cleanBannerImage = (v) => {
+    if (typeof v !== 'string' || !v) return '';
+    if (v.length > 3_000_000 || !DATA_IMG_RE.test(v)) throw bad('That image is not supported or is too large. Use a JPG or PNG under 2 MB.', 'image');
+    return v;
+  };
+
+  owner.get('/banners', (req, res) => res.json({ banners: allBanners() }));
+
+  owner.post('/banners', (req, res) => {
+    const b = req.body;
+    const title = str(b.title, 80);
+    if (title.length < 2) throw bad('Enter a banner title', 'title');
+    if (db.prepare('SELECT COUNT(*) c FROM banners').get().c >= 10) throw bad('You can have up to 10 banners. Delete one first.');
+    const now = Date.now(); const id = uid('b_');
+    const sort = db.prepare('SELECT COALESCE(MAX(sort),0) m FROM banners').get().m + 10;
+    db.prepare('INSERT INTO banners (id,title,description,image,button_text,link,enabled,sort,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+      .run(id, title, str(b.description, 160), cleanBannerImage(b.image), str(b.buttonText, 24), cleanLink(b.link), b.enabled === false ? 0 : 1, sort, now, now);
+    res.status(201).json({ banners: allBanners() });
+  });
+
+  owner.patch('/banners/:id', (req, res) => {
+    const cur = db.prepare('SELECT id FROM banners WHERE id = ?').get(req.params.id);
+    if (!cur) throw new HttpError(404, 'Banner not found');
+    const b = req.body; const set = {};
+    if (b.title !== undefined) { set.title = str(b.title, 80); if (set.title.length < 2) throw bad('Enter a banner title', 'title'); }
+    if (b.description !== undefined) set.description = str(b.description, 160);
+    if (b.buttonText !== undefined) set.button_text = str(b.buttonText, 24);
+    if (b.link !== undefined) set.link = cleanLink(b.link);
+    if (b.image !== undefined) set.image = cleanBannerImage(b.image); // '' removes the photo
+    if (b.enabled !== undefined) set.enabled = b.enabled ? 1 : 0;
+    set.updated_at = Date.now();
+    const keys = Object.keys(set);
+    db.prepare(`UPDATE banners SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE id = ?`).run(...keys.map((k) => set[k]), cur.id);
+    res.json({ banners: allBanners() });
+  });
+
+  owner.post('/banners/:id/move', (req, res) => {
+    const rows = db.prepare('SELECT id,sort FROM banners ORDER BY sort, created_at').all();
+    const i = rows.findIndex((r) => r.id === req.params.id); const j = i + (+req.body.dir < 0 ? -1 : 1);
+    if (i < 0) throw new HttpError(404, 'Banner not found');
+    if (j >= 0 && j < rows.length) {
+      tx(() => {
+        const up = db.prepare('UPDATE banners SET sort = ?, updated_at = ? WHERE id = ?'); const now = Date.now();
+        up.run(-1, now, rows[i].id); up.run(rows[i].sort, now, rows[j].id); up.run(rows[j].sort, now, rows[i].id);
+      });
+    }
+    res.json({ banners: allBanners() });
+  });
+
+  owner.delete('/banners/:id', (req, res) => {
+    db.prepare('DELETE FROM banners WHERE id = ?').run(req.params.id);
+    res.json({ banners: allBanners() });
+  });
 
   /* ---- owner: edit the "Sell your vehicle" form ---- */
   const fieldByKey = (key) => {

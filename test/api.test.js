@@ -61,7 +61,7 @@ test('owner and user sign-ins are separate', async () => {
   const c = client();
   const asUser = await c('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'user' });
   assert.equal(asUser.status, 401);
-  assert.match(asUser.data.error, /owner account/i);
+  assert.doesNotMatch(asUser.data.error, /owner/i); // the user form never reveals an owner sign-in exists
   assert.equal((await c('GET', '/api/auth/me')).data.user, null);
   const asUserPw = await c('POST', '/api/auth/login', { id: 'ravi@example.com', password: 'secret123', as: 'owner' });
   assert.equal(asUserPw.status, 401);
@@ -269,4 +269,34 @@ test('owner can hide or make optional the model number', async () => {
   assert.equal((await u('POST', '/api/listings', bare)).data.listing.title, 'Tata');
   await o('PATCH', '/api/owner/form-fields/title', { required: true });
   await o('PATCH', '/api/owner/form-fields/model', { enabled: true });
+});
+
+test('owner has a private URL and banners can be managed', async () => {
+  const res = await fetch(base + '/owner', { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/#/owner/login');
+  const o = client(), u = client(), anon = client();
+  await o('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'owner' });
+  await u('POST', '/api/auth/register', { ...newUser, email: 'ban@example.com', phone: '9789123456' });
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==';
+  assert.equal((await u('POST', '/api/owner/banners', { title: 'x' })).status, 403);
+  assert.equal((await o('POST', '/api/owner/banners', { title: 'A' })).data.field, 'title');
+  assert.equal((await o('POST', '/api/owner/banners', { title: 'Sale', link: 'javascript:alert(1)' })).data.field, 'link');
+  assert.equal((await o('POST', '/api/owner/banners', { title: 'Sale', image: 'http://evil/x.png' })).data.field, 'image');
+  const add = await o('POST', '/api/owner/banners', { title: 'Festival offers', description: 'Up to 10% off', image: png, buttonText: 'View tippers', link: '#/list/trucks/tippers' });
+  assert.equal(add.status, 201);
+  const b = add.data.banners[0];
+  assert.equal(b.hasImage, true);
+  const pub = (await anon('GET', '/api/bootstrap')).data.banners;
+  assert.equal(pub.length, 1);
+  assert.equal(pub[0].title, 'Festival offers');
+  assert.ok(!('image' in pub[0]));
+  const img = await fetch(`${base}/api/banners/${b.id}/image`);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  await o('PATCH', `/api/owner/banners/${b.id}`, { enabled: false });
+  assert.equal((await anon('GET', '/api/bootstrap')).data.banners.length, 0);
+  await o('PATCH', `/api/owner/banners/${b.id}`, { enabled: true, image: '' });
+  assert.equal((await o('GET', '/api/owner/banners')).data.banners[0].hasImage, false);
+  assert.equal((await o('DELETE', `/api/owner/banners/${b.id}`)).data.banners.length, 0);
 });

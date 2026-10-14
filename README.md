@@ -5,13 +5,15 @@ real accounts with two sign-in types:
 
 | | **User** | **Owner** |
 |---|---|---|
-| Sign in at | `/#/login` (sign-up at `/#/signup`) | `/#/owner/login` |
+| Sign in at | `/#/login` (sign-up at `/#/signup`) | `/owner` (private URL, not linked anywhere on the site) |
 | Account creation | Self-service sign-up (email, mobile, password) | Created by the administrator (first start / CLI) |
 | Can | Browse, list vehicles, chat privately, save vehicles, request finance | Owner console: stats, verify / suspend / delete users, remove / restore / delete listings, work finance requests |
 
 **Sell form:** tapping Sell asks "What are you selling?", then opens one form (truck type → brand → model number, then the details). The owner controls that form from **Owner dashboard → Sell form**: show/hide fields, make them required, rename them, edit dropdown options, reorder, and add or delete custom fields. Custom field answers show on the vehicle page. Core fields (type, brand, year, km, price, city, state) are always on.
 
-The two sign-ins are separate: an owner's credentials are rejected on the user form and vice-versa.
+The two sign-ins are separate: the normal login page has no owner option, and owner credentials are rejected there.
+
+**Home banner:** the owner manages the slides at the top of the home page (photo, title, short description, optional button) from **Owner dashboard → Banners**. With no banners, the default slides are shown.
 
 ## Run it
 
