@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Spidy · Commercial Vehicle Marketplace</title>
+<title>Autoreboot · Commercial Vehicle Marketplace</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -135,6 +135,7 @@ a{color:inherit;text-decoration:none}
 .hero{position:relative;border-radius:var(--r-lg);overflow:hidden;margin-top:14px;aspect-ratio:16/8.4;min-height:230px;max-height:430px;width:100%;background:#cfe4f5;box-shadow:var(--shadow)}
 .hero-slide{position:absolute;inset:0;opacity:0;transition:opacity .7s ease}
 .hero-slide.on{opacity:1}
+.hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero-slide svg.scene{position:absolute;inset:0;width:100%;height:100%}
 .hero-copy{position:absolute;left:0;top:0;bottom:0;width:min(560px,62%);padding:clamp(18px,4vw,40px);display:flex;flex-direction:column;justify-content:center;color:#101B3B;background:linear-gradient(90deg,rgba(255,255,255,.88),rgba(255,255,255,.55) 70%,transparent)}
 .hero-copy h2{font-size:clamp(20px,3.6vw,38px);line-height:1.08;margin:0 0 10px;font-weight:800;letter-spacing:-.025em}
@@ -310,12 +311,12 @@ textarea.input{height:auto;padding:12px 14px;resize:vertical;min-height:110px}
 .stars{display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600;color:var(--ink-2)}
 .stars .ic{color:#F5A524;fill:#F5A524}
 .det-title{font-size:clamp(24px,3.4vw,32px);margin:18px 0 4px;font-weight:800;letter-spacing:-.02em}
-.specs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:14px 8px;margin:16px 0}
+.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px;padding:14px 8px;margin:16px 0}
 .spec{display:flex;align-items:center;gap:9px;padding:4px 8px;min-width:0}
 .spec .ic{color:var(--primary)}
 .spec small{display:block;font-size:12px;color:var(--ink-2);font-weight:600}
 .spec b{font-size:14px;font-weight:700;white-space:nowrap}
-@media (max-width:1000px){.specs{grid-template-columns:repeat(3,1fr);row-gap:14px}}
+@media (max-width:1000px){.specs{row-gap:14px}}
 @media (max-width:480px){.specs{grid-template-columns:repeat(2,1fr)}}
 .det-cols{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
 @media (max-width:700px){.det-cols{grid-template-columns:1fr}}
@@ -508,8 +509,9 @@ textarea.input{height:auto;padding:12px 14px;resize:vertical;min-height:110px}
 <div id="layer"></div>
 <script>
 /* =====================================================================
-   SPIDY — Commercial Vehicle Marketplace
-   Single-file SPA. "Backend" = local API over localStorage (see DB/API).
+   AUTOREBOOT — Commercial Vehicle Marketplace
+   Single-page app served by the Express + SQLite backend (see /server).
+   Roles: user (buy/sell/chat) and owner (admin console).
    ===================================================================== */
 'use strict';
 
@@ -817,7 +819,7 @@ function imgsOf(l){ return (l.photos && l.photos.length) ? l.photos : ART_VIEWS.
 function renderImg(ref, alt=''){
   if (!ref) return '';
   if (ref.startsWith('art:')){
-    const [,id,view] = ref.split(':'); const l = DB.get('listings').find(x=>x.id===id);
+    const [,id,view] = ref.split(':'); const l = API.listings.get(id);
     return l ? artFor(l, view) : '';
   }
   return `<img src="${esc(ref)}" alt="${esc(alt)}" loading="lazy">`;
@@ -899,95 +901,103 @@ const SPEC_DEFAULTS = {
 const HIGHLIGHT_OPTIONS = ['Excellent Running Condition','Regularly Serviced','New Tyres','Heavy Body with Strong Cabin','Tipper Body in Good Condition','Ready to Work – No Work Required','Insurance Valid','Fitness Certificate Valid','National Permit','Loan Available','Single Owner','Accident Free'];
 const SWATCHES = ['#F3F4F7','#1F5FD1','#E9B21C','#D63A2F','#1BA39C','#E2541B','#2F8F3A','#7C3AED','#222831','#A63A2B'];
 
-/* ------------------------- STORAGE "BACKEND" ------------------------ */
-const DB = (() => {
-  const KEY = 'spidy_db_v1';
-  let mem = null, persistent = true;
-  try { const t='__t'; localStorage.setItem(t,t); localStorage.removeItem(t); } catch(e){ persistent = false; }
-  function load(){ if(!persistent) return mem; try { return JSON.parse(localStorage.getItem(KEY)); } catch(e){ return null; } }
-  let state = load();
-  function save(){
-    if(!persistent){ mem = state; return true; }
-    try { localStorage.setItem(KEY, JSON.stringify(state)); return true; }
-    catch(e){ toast('Device storage is full. Remove some photos or listings.', 'bad'); return false; }
-  }
-  return {
-    ready:()=>!!state, init(s){ state=s; save(); }, get:t=>state[t], save,
-    set(t,v){ state[t]=v; return save(); },
-    reset(){ try{localStorage.removeItem(KEY); localStorage.removeItem('spidy_session');}catch(e){} state=null; mem=null; },
-    persistent:()=>persistent,
-    sizeKB(){ try{ return Math.round((localStorage.getItem(KEY)||'').length/1024); }catch(e){ return 0; } }
-  };
-})();
-
-async function hashPw(pw, salt){
-  const data = new TextEncoder().encode(salt + ':' + pw);
-  if (window.crypto && crypto.subtle){
-    const buf = await crypto.subtle.digest('SHA-256', data);
-    return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
-  }
-  let h1=0xdeadbeef, h2=0x41c6ce57; for (const ch of data){ h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
-  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909); h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
-  return (h2>>>0).toString(16)+(h1>>>0).toString(16);
-}
+/* ------------------------ SERVER-BACKED STORE ----------------------- */
+/* All data lives in the Express/SQLite server. The browser keeps a read cache (Store)
+   that is hydrated from /api/bootstrap and polled, so views can stay synchronous. */
 class ApiError extends Error { constructor(msg, field){ super(msg); this.field = field; } }
 
+const Store = { ready:false, me:null, demo:false, formFields:[], banners:[], googleClientId:'', users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
+const serverNow = () => Date.now() + Store.skew;
+
+async function http(method, url, body){
+  let res;
+  try {
+    res = await fetch(url, { method, credentials:'same-origin', headers: body!==undefined ? {'Content-Type':'application/json'} : {}, body: body!==undefined ? JSON.stringify(body) : undefined });
+  } catch(e){ throw new ApiError('Cannot reach the server. Check your connection and try again.'); }
+  let data = null; try { data = await res.json(); } catch(e){}
+  if (!res.ok){
+    if (res.status === 401 && Store.me && !url.startsWith('/api/auth/')){ Store.me = null; Sync.reset(); }
+    throw new ApiError((data && data.error) || `Request failed (${res.status})`, data && data.field);
+  }
+  return data;
+}
+
+const Sync = {
+  inflight:null,
+  /* merge a /api/bootstrap payload into the cache; returns what changed so the UI can refresh */
+  apply(d){
+    const prevMe = Store.me && Store.me.id, prevMsgs = Store.messages.length, prevNoti = Store.notifications.length, prevChats = Store.chats.length;
+    const prevReads = Store.chats.reduce((s,c) => s + (c.otherRead||0), 0);
+    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.banners = d.banners || []; Store.googleClientId = d.googleClientId || ''; Store.demo = !!d.demo; Store.me = d.user;
+    Store.users = {}; (d.users||[]).forEach(u => Store.users[u.id] = u);
+    const keep = new Set(d.listingIds), byId = new Map(Store.listings.filter(l => keep.has(l.id)).map(l => [l.id, l]));
+    d.listings.forEach(l => { const old = byId.get(l.id); byId.set(l.id, old ? {...l, views:Math.max(l.views, old.views||0)} : l); });
+    Store.listings = [...byId.values()];
+    d.listings.forEach(l => { if (l.updatedAt > Store.ls) Store.ls = l.updatedAt; });
+    Store.chats = d.chats || []; Store.favorites = d.favorites || []; Store.notifications = d.notifications || []; Store.finance = d.finance || [];
+    const chatIds = new Set(Store.chats.map(c => c.id)), msgs = new Map(Store.messages.filter(m => chatIds.has(m.chatId)).map(m => [m.id, m]));
+    (d.messages||[]).forEach(m => { msgs.set(m.id, m); if (m.createdAt > Store.ms) Store.ms = m.createdAt; });
+    Store.messages = [...msgs.values()];
+    Store.ready = true;
+    Realtime.sync();
+    const readChanged = Store.chats.reduce((s,c) => s + (c.otherRead||0), 0) !== prevReads;
+    if (Store.messages.length !== prevMsgs) Object.keys(API.chats.typing).forEach(k => { API.chats.typing[k] = false; }); // a message arrived: they stopped typing
+    return { signedOut: !!prevMe && !Store.me, readChanged, newMsgs: Store.messages.length !== prevMsgs, newNoti: Store.notifications.length !== prevNoti, chatsChanged: Store.chats.length !== prevChats };
+  },
+  pull(){
+    if (this.inflight){ this.again = true; return this.inflight; }
+    this.inflight = http('GET', `/api/bootstrap?ls=${Store.ls}&ms=${Store.ms}`).then(d => { const ch = this.apply(d); this.ui(ch); return ch; })
+      .finally(() => { this.inflight = null; if (this.again){ this.again = false; this.pull().catch(()=>{}); } });
+    return this.inflight;
+  },
+  async reset(){ Store.ls = 0; Store.ms = 0; Store.listings = []; Store.messages = []; try { await this.pull(); } catch(e){} },
+  ui(ch){
+    if (!window.App || !App.started) return;
+    if (ch.signedOut){ toast('You have been signed out','bad'); App.render(); return; }
+    App.refreshBadges();
+    const h = location.hash;
+    if ((ch.newMsgs || ch.readChanged) && h.startsWith('#/chat/') && App.chatDraw) App.chatDraw();
+    else if ((ch.newMsgs || ch.newNoti || ch.chatsChanged) && (h === '#/messages' || h === '#/notifications')) App.render();
+  },
+};
+
+/* Realtime: a Server-Sent Events stream tells us the instant something arrives, so chat is live. */
+const Realtime = {
+  es:null, up:false, timers:{},
+  sync(){ const want = !!Store.me && Store.me.role === 'user'; if (want && !this.es) this.open(); else if (!want && this.es) this.close(); },
+  open(){
+    if (!window.EventSource) return;
+    const es = this.es = new EventSource('/api/events');
+    es.addEventListener('hello', () => { this.up = true; Sync.pull().catch(()=>{}); });
+    es.addEventListener('sync', () => { Sync.pull().catch(()=>{}); });
+    es.addEventListener('typing', e => {
+      let id; try { id = JSON.parse(e.data).chatId; } catch(er){ return; }
+      API.chats.typing[id] = true; App.onChatEvent(id);
+      clearTimeout(this.timers[id]); this.timers[id] = setTimeout(() => { API.chats.typing[id] = false; App.onChatEvent(id); }, 3500);
+    });
+    es.onerror = () => { this.up = false; }; // the browser reconnects by itself; polling covers the gap
+  },
+  close(){ if (this.es){ this.es.close(); this.es = null; this.up = false; } },
+};
+
 const API = (() => {
-  const LAT = 120; // simulated network latency
-  const tbl = t => DB.get(t);
-  const put = (t, rows) => DB.set(t, rows);
-  const publicUser = u => u && ({id:u.id, name:u.name, email:u.email, phone:u.phone, city:u.city, state:u.state, business:u.business, color:u.color, createdAt:u.createdAt, verified:u.verified, rating:u.rating, reviews:u.reviews, isBot:!!u.isBot});
-  const session = () => { try { return JSON.parse(localStorage.getItem('spidy_session')); } catch(e){ return API._mem; } };
-  const setSession = s => { try { s ? localStorage.setItem('spidy_session', JSON.stringify(s)) : localStorage.removeItem('spidy_session'); } catch(e){ API._mem = s; } };
-  function meId(){ const s = session(); return s && s.exp > Date.now() ? s.userId : null; }
-  function requireMe(){ const id = meId(); if(!id) throw new ApiError('Please log in to continue'); return id; }
-  const AVATAR_COLORS = ['#E5194D','#2563EB','#138A43','#7C3AED','#D97706','#0891B2','#DB2777'];
+  const meId = () => Store.me ? Store.me.id : null;
+  const requireMe = () => { if (!meId()) throw new ApiError('Please log in to continue'); return meId(); };
+  const putListing = l => { const i = Store.listings.findIndex(x => x.id === l.id); if (i >= 0) Store.listings[i] = l; else Store.listings.push(l); return l; };
+  const GONE = id => ({id, name:'Deleted user', color:'#9CA3AF', createdAt:0, verified:false, city:'', state:'', business:'', rating:0, reviews:0, deleted:true});
 
   /* ---- auth ---- */
   const auth = {
-    me(){ return publicUser(tbl('users').find(u=>u.id===meId())); },
-    async register({name, email, phone, password, city, state}){
-      await sleep(LAT*2);
-      name=(name||'').trim(); email=(email||'').trim().toLowerCase(); phone=(phone||'').replace(/\D/g,'');
-      if (name.length < 2) throw new ApiError('Enter your full name', 'name');
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError('Enter a valid email address', 'email');
-      if (!/^[6-9]\d{9}$/.test(phone)) throw new ApiError('Enter a valid 10 digit mobile number', 'phone');
-      if ((password||'').length < 6) throw new ApiError('Password must be at least 6 characters', 'password');
-      const users = tbl('users');
-      if (users.some(u=>u.email===email)) throw new ApiError('An account with this email already exists', 'email');
-      if (users.some(u=>u.phone===phone)) throw new ApiError('This mobile number is already registered', 'phone');
-      const salt = uid();
-      const u = {id:uid('u_'), name, email, phone, salt, pass: await hashPw(password, salt), city:city||'', state:state||'', business:'', color:AVATAR_COLORS[users.length % AVATAR_COLORS.length], createdAt:Date.now(), verified:false, rating:0, reviews:0};
-      users.push(u); put('users', users);
-      setSession({userId:u.id, token:uid('t_'), exp:Date.now()+30*864e5});
-      notify.push(u.id, {title:'Welcome to Spidy', body:'Your account is ready. Browse verified commercial vehicles or list your own.', link:'#/', icon:'sparkle'});
-      return publicUser(u);
-    },
-    async login({id, password}){
-      await sleep(LAT*2);
-      const key = (id||'').trim().toLowerCase(); const ph = key.replace(/\D/g,'');
-      const u = tbl('users').find(u => !u.isBot && (u.email===key || (ph.length===10 && u.phone===ph)));
-      if (!u) throw new ApiError('No account found with this email or mobile number', 'id');
-      if (await hashPw(password||'', u.salt) !== u.pass) throw new ApiError('Incorrect password', 'password');
-      setSession({userId:u.id, token:uid('t_'), exp:Date.now()+30*864e5});
-      return publicUser(u);
-    },
-    async demo(){ return auth.login({id:'demo@spidy.in', password:'demo1234'}); },
-    logout(){ setSession(null); },
-    async update(patch){
-      await sleep(LAT); const id = requireMe(); const users = tbl('users'); const u = users.find(x=>x.id===id);
-      if (patch.name !== undefined && patch.name.trim().length < 2) throw new ApiError('Enter your full name','name');
-      if (patch.phone !== undefined){ const p = patch.phone.replace(/\D/g,''); if(!/^[6-9]\d{9}$/.test(p)) throw new ApiError('Enter a valid 10 digit mobile number','phone'); if(users.some(x=>x.id!==id && x.phone===p)) throw new ApiError('This mobile number is already registered','phone'); patch.phone=p; }
-      ['name','phone','city','state','business'].forEach(k=>{ if(patch[k]!==undefined) u[k]=String(patch[k]).trim(); });
-      put('users', users); return publicUser(u);
-    },
-    async changePassword(oldPw, newPw){
-      await sleep(LAT); const id=requireMe(); const users=tbl('users'); const u=users.find(x=>x.id===id);
-      if (await hashPw(oldPw, u.salt) !== u.pass) throw new ApiError('Current password is incorrect','old');
-      if ((newPw||'').length<6) throw new ApiError('New password must be at least 6 characters','new');
-      u.salt=uid(); u.pass=await hashPw(newPw,u.salt); put('users',users);
-    },
-    user: id => publicUser(tbl('users').find(u=>u.id===id)),
+    me: () => Store.me,
+    isOwner: () => !!Store.me && Store.me.role === 'owner',
+    async register(d){ const r = await http('POST', '/api/auth/register', d); await Sync.reset(); return r.user; },
+    async login({id, password, as}){ const r = await http('POST', '/api/auth/login', {id, password, as}); await Sync.reset(); return r.user; },
+    async google(credential){ const r = await http('POST', '/api/auth/google', {credential}); await Sync.reset(); return r.user; },
+    async demo(){ return auth.login({id:'demo@autoreboot.in', password:'demo1234', as:'user'}); },
+    async logout(){ try { await http('POST', '/api/auth/logout'); } catch(e){} Store.me = null; await Sync.reset(); },
+    async update(patch){ const r = await http('PATCH', '/api/auth/me', patch); await Sync.pull(); return r.user; },
+    async changePassword(oldPw, newPw){ await http('POST', '/api/auth/password', {old:oldPw, new:newPw}); },
+    user: id => Store.users[id] || GONE(id),
   };
 
   /* ---- listings ---- */
@@ -1014,323 +1024,112 @@ const API = (() => {
     latest:(a,b)=>b.createdAt-a.createdAt, priceAsc:(a,b)=>a.price-b.price, priceDesc:(a,b)=>b.price-a.price,
     yearDesc:(a,b)=>b.year-a.year||b.createdAt-a.createdAt, kmAsc:(a,b)=>a.km-b.km,
   };
-  function validateListing(d){
-    const req = [['category','Choose a vehicle type'],['brand','Choose a brand'],['model','Enter the model name'],['city','Enter the city'],['state','Choose a state']];
-    for (const [k,m] of req) if (!String(d[k]||'').trim()) throw new ApiError(m, k);
-    if (d.category==='trucks' && !d.subtype) throw new ApiError('Choose a truck type','subtype');
-    const y = +d.year, now = new Date().getFullYear();
-    if (!(y>=1990 && y<=now)) throw new ApiError(`Enter a year between 1990 and ${now}`, 'year');
-    if (!(+d.price >= 10000)) throw new ApiError('Enter a price of at least ₹10,000', 'price');
-    if (!(+d.km >= 0)) throw new ApiError('Enter the distance or hours used', 'km');
-  }
-  function nextId(d){
-    const pre = d.category==='trucks' ? subById(d.subtype).prefix : CAT_PREFIX[d.category];
-    let id; const ids = new Set(tbl('listings').map(l=>l.id));
-    do { id = pre + String(Math.floor(100000 + Math.random()*899999)); } while(ids.has(id));
-    return id;
-  }
   const listings = {
-    async query(f={}){
-      await sleep(LAT);
-      const rows = tbl('listings').filter(l=>matches(l,f)).sort(SORTS[f.sort||'latest']||SORTS.latest);
-      return rows;
-    },
-    querySync(f={}){ return tbl('listings').filter(l=>matches(l,f)).sort(SORTS[f.sort||'latest']); },
-    count(f={}){ return tbl('listings').filter(l=>matches(l,f)).length; },
-    get: id => tbl('listings').find(l=>l.id===id),
-    async view(id){ const rows=tbl('listings'); const l=rows.find(x=>x.id===id); if(l){ l.views=(l.views||0)+1; put('listings',rows);} return l; },
-    async create(d){
-      await sleep(LAT*3); const me = requireMe(); validateListing(d);
-      const sp = SPEC_DEFAULTS[d.category==='trucks'?d.subtype:d.category];
-      const l = {
-        id: nextId(d), sellerId: me, category:d.category, subtype:d.category==='trucks'?d.subtype:null, brand:d.brand, model:d.model.trim(),
-        title: `${d.brand} ${d.model.trim()}`.replace(/^Tata Tata/,'Tata'), year:+d.year, tyres:+d.tyres||0, emission:d.emission||'BS-VI', fuel:d.fuel||'Diesel', transmission:d.transmission||'Manual',
-        km:+d.km, engine:d.engine||sp.engine, power:d.power||sp.power, load:d.load||sp.load, ownership:d.ownership||'1st Owner',
-        regNo:(d.regNo||'').toUpperCase().trim(), body:d.body||sp.body, city:d.city.trim(), state:d.state, price:+d.price, negotiable:!!d.negotiable,
-        description:(d.description||'').trim(), highlights:d.highlights||[], color:d.color||'#F3F4F7', photos:d.photos||[], status:'active', views:0, createdAt:Date.now(),
-      };
-      const rows = tbl('listings'); rows.push(l);
-      if (!put('listings', rows)) { rows.pop(); throw new ApiError('Could not save — device storage is full. Try fewer or smaller photos.'); }
-      notify.push(me, {title:'Your vehicle is live', body:`${l.title} is now visible to buyers. Listing ID ${l.id}.`, link:'#/v/'+l.id, icon:'checkCircle'});
-      return l;
-    },
-    async update(id, d){
-      await sleep(LAT*2); const me = requireMe(); const rows=tbl('listings'); const l=rows.find(x=>x.id===id);
-      if (!l || l.sellerId!==me) throw new ApiError('You can only edit your own listings');
-      validateListing({...l, ...d});
-      Object.assign(l, d, {title:`${d.brand||l.brand} ${(d.model||l.model).trim()}`, year:+(d.year??l.year), price:+(d.price??l.price), km:+(d.km??l.km), tyres:+(d.tyres??l.tyres), subtype:(d.category||l.category)==='trucks'?(d.subtype||l.subtype):null, updatedAt:Date.now()});
-      if (!put('listings', rows)) throw new ApiError('Could not save — device storage is full.');
-      return l;
-    },
-    async setStatus(id, status){ await sleep(LAT); const me=requireMe(); const rows=tbl('listings'); const l=rows.find(x=>x.id===id); if(!l||l.sellerId!==me) throw new ApiError('Not allowed'); l.status=status; put('listings',rows); return l; },
-    async remove(id){ await sleep(LAT); const me=requireMe(); const l=listings.get(id); if(!l||l.sellerId!==me) throw new ApiError('Not allowed'); put('listings', tbl('listings').filter(x=>x.id!==id)); },
-    brandCounts(f){ const m={}; tbl('listings').filter(l=>matches(l,{...f, brand:null})).forEach(l=>m[l.brand]=(m[l.brand]||0)+1); return m; },
+    async query(f={}){ await Sync.pull().catch(()=>{}); return listings.querySync(f); },
+    querySync: (f={}) => Store.listings.filter(l=>matches(l,f)).sort(SORTS[f.sort||'latest']||SORTS.latest),
+    count: (f={}) => Store.listings.filter(l=>matches(l,f)).length,
+    get: id => Store.listings.find(l=>l.id===id),
+    view(id){ const l = listings.get(id); if (l) l.views = (l.views||0) + 1; http('POST', `/api/listings/${encodeURIComponent(id)}/view`).catch(()=>{}); },
+    async create(d){ requireMe(); const r = await http('POST', '/api/listings', d); return putListing(r.listing); },
+    async update(id, d){ const r = await http('PATCH', `/api/listings/${encodeURIComponent(id)}`, d); return putListing(r.listing); },
+    async setStatus(id, status){ const r = await http('POST', `/api/listings/${encodeURIComponent(id)}/status`, {status}); return putListing(r.listing); },
+    async remove(id){ await http('DELETE', `/api/listings/${encodeURIComponent(id)}`); Store.listings = Store.listings.filter(x=>x.id!==id); Store.favorites = Store.favorites.filter(x=>x!==id); },
+    brandCounts(f){ const m={}; Store.listings.filter(l=>matches(l,{...f, brand:null})).forEach(l=>m[l.brand]=(m[l.brand]||0)+1); return m; },
   };
 
-  /* ---- favorites ---- */
+  /* ---- favorites (optimistic) ---- */
   const favs = {
-    ids(){ const id=meId(); return id ? (tbl('favorites')[id]||[]) : []; },
-    has: lid => favs.ids().includes(lid),
-    toggle(lid){ const me=requireMe(); const all=tbl('favorites'); const s=new Set(all[me]||[]); const on=!s.has(lid); on?s.add(lid):s.delete(lid); all[me]=[...s]; put('favorites',all); return on; },
-    list(){ const ids=favs.ids(); return tbl('listings').filter(l=>ids.includes(l.id)); },
+    ids: () => Store.favorites,
+    has: lid => Store.favorites.includes(lid),
+    toggle(lid){
+      requireMe(); const on = !favs.has(lid);
+      Store.favorites = on ? [...Store.favorites, lid] : Store.favorites.filter(x=>x!==lid);
+      http('POST', `/api/favorites/${encodeURIComponent(lid)}/toggle`).catch(e => {
+        Store.favorites = on ? Store.favorites.filter(x=>x!==lid) : [...Store.favorites, lid];
+        $$(`[data-fav="${lid}"]`).forEach(b=>{ b.classList.toggle('on', !on); b.setAttribute('aria-pressed', !on); });
+        toast(e.message, 'bad');
+      });
+      return on;
+    },
+    list: () => Store.listings.filter(l => Store.favorites.includes(l.id)),
   };
 
   /* ---- notifications ---- */
   const notify = {
-    push(userId, n){ const rows=tbl('notifications'); rows.unshift({id:uid('n_'), userId, read:false, createdAt:Date.now(), icon:'bell', ...n}); put('notifications', rows.slice(0,200)); },
-    list(){ const me=meId(); return me ? tbl('notifications').filter(n=>n.userId===me) : []; },
-    unread(){ return notify.list().filter(n=>!n.read).length; },
-    readAll(){ const me=meId(); const rows=tbl('notifications'); rows.forEach(n=>{ if(n.userId===me) n.read=true; }); put('notifications',rows); },
-    read(id){ const rows=tbl('notifications'); const n=rows.find(x=>x.id===id); if(n){n.read=true; put('notifications',rows);} },
+    list: () => Store.notifications,
+    unread: () => Store.notifications.filter(n=>!n.read).length,
+    readAll(){ Store.notifications.forEach(n=>n.read=true); http('POST', '/api/notifications/read-all').catch(()=>{}); },
+    read(id){ const n = Store.notifications.find(x=>x.id===id); if (n) n.read = true; http('POST', `/api/notifications/${encodeURIComponent(id)}/read`).catch(()=>{}); },
   };
 
   /* ---- chats ---- */
   const typing = {};
   const chats = {
     typing,
-    async open(listingId){
-      await sleep(LAT); const me=requireMe(); const l=listings.get(listingId);
-      if (!l) throw new ApiError('This vehicle is no longer available');
-      if (l.sellerId===me) throw new ApiError('This is your own listing');
-      const rows=tbl('chats'); let c=rows.find(x=>x.listingId===listingId && x.buyerId===me);
-      if (!c){ c={id:uid('c_'), listingId, buyerId:me, sellerId:l.sellerId, createdAt:Date.now(), updatedAt:Date.now(), lastRead:{}}; rows.push(c); put('chats',rows); }
-      return c.id;
-    },
-    mine(){ const me=meId(); if(!me) return []; return tbl('chats').filter(c=>c.buyerId===me||c.sellerId===me).sort((a,b)=>b.updatedAt-a.updatedAt); },
-    get: id => tbl('chats').find(c=>c.id===id),
-    messages: id => tbl('messages').filter(m=>m.chatId===id).sort((a,b)=>a.createdAt-b.createdAt),
-    last(id){ const m=chats.messages(id); return m[m.length-1]; },
-    unreadIn(c){ const me=meId(); const t=(c.lastRead||{})[me]||0; return tbl('messages').filter(m=>m.chatId===c.id && m.senderId!==me && m.createdAt>t).length; },
-    unreadTotal(){ return chats.mine().reduce((s,c)=>s+chats.unreadIn(c),0); },
-    markRead(id){ const me=meId(); const rows=tbl('chats'); const c=rows.find(x=>x.id===id); if(c){ c.lastRead={...(c.lastRead||{}), [me]:Date.now()}; put('chats',rows);} },
+    async open(listingId){ const r = await http('POST', '/api/chats', {listingId}); await Sync.pull(); return r.id; },
+    mine: () => [...Store.chats].sort((a,b)=>b.updatedAt-a.updatedAt),
+    get: id => Store.chats.find(c=>c.id===id),
+    messages: id => Store.messages.filter(m=>m.chatId===id).sort((a,b)=>a.createdAt-b.createdAt),
+    last(id){ const m = chats.messages(id); return m[m.length-1]; },
+    unreadIn(c){ const me = meId(); return Store.messages.filter(m => m.chatId===c.id && m.senderId!==me && m.createdAt > (c.lastRead||0)).length; },
+    unreadTotal: () => Store.chats.reduce((s,c)=>s+chats.unreadIn(c), 0),
+    markRead(id){ const c = chats.get(id); if (!c || !chats.unreadIn(c)) return; c.lastRead = serverNow(); http('POST', `/api/chats/${encodeURIComponent(id)}/read`).catch(()=>{}); },
     async send(id, {text='', images=[]}){
-      const me=requireMe(); text=text.trim(); if(!text && !images.length) return;
-      if (text.length>1000) throw new ApiError('Messages can be up to 1000 characters');
-      const c=chats.get(id); if(!c) throw new ApiError('Conversation not found');
-      const m={id:uid('m_'), chatId:id, senderId:me, text, images, createdAt:Date.now()};
-      const rows=tbl('messages'); rows.push(m);
-      if(!put('messages',rows)){ rows.pop(); throw new ApiError('Could not send — device storage is full.'); }
-      const cs=tbl('chats'); const cc=cs.find(x=>x.id===id); cc.updatedAt=m.createdAt; cc.lastRead={...(cc.lastRead||{}), [me]:m.createdAt}; put('chats',cs);
-      const other = c.buyerId===me ? c.sellerId : c.buyerId; const ou = tbl('users').find(u=>u.id===other);
-      const meU = auth.me();
-      if (ou && ou.isBot) Bot.reply(cc, m);
-      else notify.push(other, {title:`New message from ${meU.name}`, body:text||'Sent photos', link:'#/chat/'+id, icon:'msg'});
-      return m;
+      requireMe(); text = text.trim(); if (!text && !images.length) return;
+      if (text.length > 1000) throw new ApiError('Messages can be up to 1000 characters');
+      const c = chats.get(id); if (!c) throw new ApiError('Conversation not found');
+      const r = await http('POST', `/api/chats/${encodeURIComponent(id)}/messages`, {text, images});
+      Store.messages.push(r.message); c.updatedAt = r.message.createdAt; c.lastRead = r.message.createdAt;
+      if (r.message.createdAt > Store.ms) Store.ms = r.message.createdAt;
+      const other = API.auth.user(c.buyerId===meId() ? c.sellerId : c.buyerId);
+      if (other.isBot) chats._awaitReply(id, r.message.createdAt);
+      return r.message;
     },
-    _botSend(chatId, senderId, text, images=[]){
-      const m={id:uid('m_'), chatId, senderId, text, images, createdAt:Date.now()};
-      const rows=tbl('messages'); rows.push(m); put('messages',rows);
-      const cs=tbl('chats'); const c=cs.find(x=>x.id===chatId); c.updatedAt=m.createdAt; put('chats',cs);
-      const seller=tbl('users').find(u=>u.id===senderId);
-      if (!location.hash.startsWith('#/chat/'+chatId)) notify.push(c.buyerId, {title:`${seller.name} replied`, body:text, link:'#/chat/'+chatId, icon:'msg'});
-      return m;
+    /* demo dealers reply automatically: show "typing…" and poll quickly until the reply lands */
+    async _awaitReply(id, since){
+      typing[id] = true; App.onChatEvent(id);
+      for (let i = 0; i < 12 && typing[id]; i++){
+        await sleep(900); try { await Sync.pull(); } catch(e){}
+        if (Store.messages.some(m => m.chatId===id && m.senderId!==meId() && m.createdAt > since)) break;
+      }
+      typing[id] = false; App.onChatEvent(id);
     },
+    async remove(id){ await http('DELETE', `/api/chats/${encodeURIComponent(id)}`); Store.chats = Store.chats.filter(c=>c.id!==id); Store.messages = Store.messages.filter(m=>m.chatId!==id); },
   };
 
   /* ---- finance ---- */
   const finance = {
-    async submit(d){
-      await sleep(LAT*4); const me=requireMe();
-      const name=(d.name||'').trim(), age=+d.age, mobile=(d.mobile||'').replace(/\D/g,''), city=(d.city||'').trim(), pin=(d.pincode||'').trim();
-      if (name.length<2) throw new ApiError('Enter your full name','name');
-      if (!(age>=18 && age<=75)) throw new ApiError('Age must be between 18 and 75','age');
-      if (!/^[6-9]\d{9}$/.test(mobile)) throw new ApiError('Enter a valid 10 digit mobile number','mobile');
-      if (city.length<2) throw new ApiError('Enter your city','city');
-      if (!d.state) throw new ApiError('Select your state','state');
-      if (!/^[1-9]\d{5}$/.test(pin)) throw new ApiError('Enter a valid 6 digit pincode','pincode');
-      const rows=tbl('finance');
-      if (rows.some(r=>r.userId===me && r.listingId===d.listingId && Date.now()-r.createdAt<864e5)) throw new ApiError('You already requested finance for this vehicle today. Our team will call you soon.');
-      const r={id:uid('f_'), userId:me, listingId:d.listingId, name, age, mobile, city, state:d.state, pincode:pin, status:'new', createdAt:Date.now()};
-      rows.unshift(r); put('finance',rows);
-      const l=listings.get(d.listingId);
-      notify.push(me,{title:'Finance request received', body:`For ${l?l.title:'your vehicle'}. Our finance team will call you within 24 hours.`, link:'#/profile/finance', icon:'bank'});
-      setTimeout(()=>{ const rr=tbl('finance'); const x=rr.find(y=>y.id===r.id); if(x&&x.status==='new'){ x.status='contacted'; put('finance',rr); notify.push(me,{title:'Finance offers ready', body:`3 lenders have pre-approved offers for ${l?l.title:'your vehicle'}. Expect a call shortly.`, link:'#/profile/finance', icon:'bank'}); App.refreshBadges(); } }, 25000);
-      return r;
-    },
-    mine(){ const me=meId(); return me ? tbl('finance').filter(r=>r.userId===me) : []; },
+    async submit(d){ const r = await http('POST', '/api/finance', d); Store.finance.unshift(r.request); await Sync.pull().catch(()=>{}); return r.request; },
+    mine: () => Store.finance,
   };
 
-  return { auth, listings, favs, notify, chats, finance, meId };
+  /* ---- owner console ---- */
+  const qs = o => { const p = new URLSearchParams(); Object.entries(o).forEach(([k,v])=>{ if (v) p.set(k, v); }); const s = p.toString(); return s ? '?'+s : ''; };
+  const owner = {
+    overview: () => http('GET', '/api/owner/overview'),
+    users: q => http('GET', '/api/owner/users' + qs({q})).then(r=>r.users),
+    patchUser: (id, patch) => http('PATCH', `/api/owner/users/${encodeURIComponent(id)}`, patch),
+    deleteUser: id => http('DELETE', `/api/owner/users/${encodeURIComponent(id)}`),
+    listings: (q, status) => http('GET', '/api/owner/listings' + qs({q, status})).then(r=>r.listings),
+    patchListing: (id, status) => http('PATCH', `/api/owner/listings/${encodeURIComponent(id)}`, {status}),
+    deleteListing: id => http('DELETE', `/api/owner/listings/${encodeURIComponent(id)}`),
+    finance: () => http('GET', '/api/owner/finance').then(r=>r.requests),
+    formFields: () => http('GET', '/api/owner/form-fields').then(r => (Store.formFields = r.fields)),
+    addField: p => http('POST', '/api/owner/form-fields', p).then(r => (Store.formFields = r.fields)),
+    patchField: (key, p) => http('PATCH', `/api/owner/form-fields/${encodeURIComponent(key)}`, p).then(r => (Store.formFields = r.fields)),
+    moveField: (key, dir) => http('POST', `/api/owner/form-fields/${encodeURIComponent(key)}/move`, {dir}).then(r => (Store.formFields = r.fields)),
+    deleteField: key => http('DELETE', `/api/owner/form-fields/${encodeURIComponent(key)}`).then(r => (Store.formFields = r.fields)),
+    banners: () => http('GET', '/api/owner/banners').then(r => r.banners),
+    addBanner: p => http('POST', '/api/owner/banners', p).then(r => r.banners),
+    patchBanner: (id, p) => http('PATCH', `/api/owner/banners/${encodeURIComponent(id)}`, p).then(r => r.banners),
+    moveBanner: (id, dir) => http('POST', `/api/owner/banners/${encodeURIComponent(id)}/move`, {dir}).then(r => r.banners),
+    deleteBanner: id => http('DELETE', `/api/owner/banners/${encodeURIComponent(id)}`).then(r => r.banners),
+    patchFinance: (id, status) => http('PATCH', `/api/owner/finance/${encodeURIComponent(id)}`, {status}),
+  };
+
+  return { auth, listings, favs, notify, chats, finance, owner, meId };
 })();
 
-/* --------------------------- SELLER BOT ----------------------------- */
-const Bot = (() => {
-  function respond(l, text){
-    const t = text.toLowerCase();
-    const num = (t.replace(/,/g,'').match(/(\d+(\.\d+)?)\s*(l|lakh|lakhs|lac)?\b/)||[]);
-    let offer = 0;
-    if (num[1]){ offer = parseFloat(num[1]); if (num[3]) offer *= 1e5; }
-    if (offer >= 10000 && /(offer|give|pay|final|can you do|for|₹|rs|lakh|lac)/.test(t) || offer >= 100000){
-      if (offer >= l.price) return {text:`That works. ${inr(l.price)} is the listed price — come and check the vehicle and we can close it.`};
-      if (offer >= l.price*0.93) return {text:`${inr(Math.round(offer))} is acceptable if you can pay the token advance this week. When would you like to visit?`};
-      const best = Math.round(l.price*0.95/5000)*5000;
-      return {text:`${inr(Math.round(offer))} is too low for this vehicle. The best I can do is ${inr(best)}.`};
-    }
-    if (/\b(hi|hello|hey|namaste|namaskar)\b/.test(t) && t.length < 25) return {text:`Hello! Thanks for your interest in the ${l.title}. How can I help?`};
-    if (/(available|still there|sold)/.test(t)) return {text:'Yes, it is still available.\nTell me if you need more details.'};
-    if (/(condition|service|history|photo|image|picture|pic)/.test(t)) return {text:'Sure, the vehicle is in excellent condition.\nAll services are done regularly.\nYou can check the images for more details.', images: ART_VIEWS.slice(0,4).map(v=>'art:'+l.id+':'+v), photos:true};
-    if (/(price|final|negotiable|last|best|discount|rate|cost)/.test(t)) return {text:`The price is ${inr(l.price)} and ${l.negotiable?'slightly negotiable':'fixed'}.\nYou can come and check the vehicle.`};
-    if (/(km|kilomet|driven|run|hours|hrs)/.test(t)) return {text:`It has done ${usageFmt(l)}. Mostly ${HOURS_CATS.includes(l.category)?'light farm and site work':'highway running'}, no major repairs.`};
-    if (/(paper|document|rc|insurance|permit|fitness|noc|tax)/.test(t)) return {text:'All papers are clear and up to date — RC, insurance, fitness and permit. NOC can be arranged for transfer.'};
-    if (/(loan|finance|emi)/.test(t)) return {text:'Yes, loan is possible on this vehicle. Tap "Check Finance Options" on the listing and the Spidy team will help you with the best offers.'};
-    if (/(visit|tomorrow|come|location|address|where|see)/.test(t)) return {text:`Sure, you're welcome. The vehicle is at our yard in ${l.city}. Message me here before you leave and I'll share the exact location.`};
-    if (/(tyre|tire)/.test(t)) return {text:`${l.tyres ? l.tyres+' tyres, ' : ''}${(l.highlights||[]).includes('New Tyres')?'all recently replaced.':'in good condition with plenty of life left.'}`};
-    if (/(owner|ownership)/.test(t)) return {text:`It is a ${l.ownership.toLowerCase()} vehicle.`};
-    if (/(thank|ok|okay|fine|great|sure)/.test(t)) return {text:'You are welcome. Let me know if you need anything else.'};
-    if (/(accident|damage)/.test(t)) return {text:'No accidents. The chassis and body are original. You can get it inspected when you visit.'};
-    return {text:'Thanks for your message. I will check and get back to you shortly.'};
-  }
-  function reply(chat, msg){
-    const l = API.listings.get(chat.listingId); if (!l) return;
-    const r = msg.images && msg.images.length && !msg.text ? {text:'Got the photos, thank you.'} : respond(l, msg.text);
-    setTimeout(()=>{ API.chats.typing[chat.id]=true; App.onChatEvent(chat.id); }, 600);
-    setTimeout(()=>{
-      API.chats.typing[chat.id]=false;
-      API.chats._botSend(chat.id, chat.sellerId, r.text);
-      if (r.images){ setTimeout(()=>{ API.chats._botSend(chat.id, chat.sellerId, '', r.images); App.onChatEvent(chat.id); App.refreshBadges(); }, 700); }
-      App.onChatEvent(chat.id); App.refreshBadges();
-    }, 1700 + Math.min(1500, r.text.length*12));
-  }
-  return { reply };
-})();
-
-/* ------------------------------ SEED -------------------------------- */
-async function seed(){
-  const H = 3600e3, now = Date.now();
-  const bots = [
-    ['u_venk','Venkatesh Trucks','Khammam','Telangana', new Date(2020,8,12).getTime(), 4.7, 152],
-    ['u_sai','Sri Sai Motors','Hyderabad','Telangana', new Date(2019,4,3).getTime(), 4.5, 96],
-    ['u_lak','Lakshmi Transport Co.','Vijayawada','Andhra Pradesh', new Date(2021,1,20).getTime(), 4.6, 74],
-    ['u_dec','Deccan Fleet Sales','Bengaluru','Karnataka', new Date(2018,10,8).getTime(), 4.8, 210],
-    ['u_rag','Raghav Earthmovers','Hyderabad','Telangana', new Date(2020,2,14).getTime(), 4.4, 58],
-    ['u_kis','Kisan Agro Traders','Nagpur','Maharashtra', new Date(2021,6,1).getTime(), 4.6, 83],
-    ['u_met','Metro Bus & Coach','Pune','Maharashtra', new Date(2019,11,9).getTime(), 4.3, 41],
-    ['u_gan','Ganesh Auto Point','Delhi','Delhi', new Date(2022,3,18).getTime(), 4.5, 67],
-    ['u_pat','Patil Logistics','Indore','Madhya Pradesh', new Date(2020,9,27).getTime(), 4.7, 119],
-  ];
-  const users = bots.map(([id,name,city,state,createdAt,rating,reviews],i)=>({id,name,email:id+'@seller.spidy.in',phone:'90000000'+String(i).padStart(2,'0'),salt:'',pass:'!',city,state,business:name,color:['#E5194D','#2563EB','#138A43','#7C3AED','#D97706','#0891B2','#DB2777','#0F766E','#9333EA'][i],createdAt,verified:true,rating,reviews,isBot:true}));
-  const salt = 'demo-salt';
-  users.push({id:'u_demo', name:'Arjun Reddy', email:'demo@spidy.in', phone:'9876543210', salt, pass: await hashPw('demo1234', salt), city:'Hyderabad', state:'Telangana', business:'Reddy Builders', color:'#2563EB', createdAt:new Date(2024,0,15).getTime(), verified:true, rating:4.9, reviews:12});
-
-  const rows = [];
-  let n = 0;
-  function L(o){
-    const key = o.cat==='trucks' ? o.sub : o.cat; const sp = SPEC_DEFAULTS[key];
-    const age = new Date().getFullYear() - o.year;
-    const pre = o.cat==='trucks' ? subById(o.sub).prefix : CAT_PREFIX[o.cat];
-    const hrs = HOURS_CATS.includes(o.cat);
-    const l = {
-      id: o.id || pre + String(234567 + (n++)*7919).slice(0,6), sellerId:o.seller, category:o.cat, subtype:o.cat==='trucks'?o.sub:null,
-      brand:o.brand, model:o.model, title:o.title || `${o.brand} ${o.model}`, year:o.year, tyres:o.tyres||0, emission:o.em||'BS-VI',
-      fuel:o.fuel||'Diesel', transmission:o.tr||'Manual', km:o.km ?? (hrs ? 900*Math.max(1,age)+340 : 38000*Math.max(1,age)+7000), engine:o.engine||sp.engine, power:o.power||sp.power,
-      load:o.load||sp.load, ownership:o.own||'1st Owner', regNo:o.reg || `${STATE_CODE[o.state]} ${String(10+(n*7)%30).padStart(2,'0')} ${'ABCDEFGHJKLMNPRTUV'[n%18]}${'ABCDEFGHJKLMNPRTUV'[(n*5)%18]} ${String(1000+(n*389)%9000)}`,
-      body:o.body||sp.body, city:o.city, state:o.state, price:o.price, negotiable:o.neg!==false,
-      description:o.desc || `${o.title || o.brand+' '+o.model} in excellent condition. ${o.own==='2nd Owner'?'Second owner':'Single owner'} vehicle. All papers are clear and up to date. Vehicle is well maintained and ready for immediate use.\nNo any major work required.`,
-      highlights:o.hl || ['Excellent Running Condition','Regularly Serviced', o.tyres?'New Tyres':'Insurance Valid', key==='tippers'?'Tipper Body in Good Condition':key==='lorries'?'Heavy Body with Strong Cabin':'Fitness Certificate Valid','Ready to Work – No Work Required'],
-      color:o.color, photos:[], status:'active', views: 40 + (n*37)%400, createdAt: now - o.h*H,
-    };
-    rows.push(l); return l;
-  }
-  // Lorries / DCM
-  L({id:'LOR123456', seller:'u_venk', cat:'trucks', sub:'lorries', brand:'Tata', model:'LPT 1613', year:2018, tyres:6, em:'BS-IV', city:'Khammam', state:'Telangana', price:1250000, h:2, color:'#1F5FD1', km:105000, engine:'6.7 L', power:'160 HP', load:'13 Ton', reg:'TS 07 UF 1234', body:'Container Body', desc:'Tata LPT 1613 Lorry in excellent condition. Single owner vehicle. All papers are clear and up to date. Vehicle is well maintained and ready for immediate use.\nNo any major work required.'});
-  L({seller:'u_sai', cat:'trucks', sub:'lorries', brand:'Ashok Leyland', model:'1616 AVTR', year:2019, tyres:6, em:'BS-IV', city:'Warangal', state:'Telangana', price:1425000, h:3, color:'#F3F4F7'});
-  L({seller:'u_sai', cat:'trucks', sub:'lorries', brand:'BharatBenz', model:'1617R', year:2020, tyres:6, em:'BS-VI', city:'Hyderabad', state:'Telangana', price:1780000, h:5, color:'#1BA39C', power:'170 HP', load:'10.5 Ton'});
-  L({seller:'u_venk', cat:'trucks', sub:'lorries', brand:'Eicher', model:'Pro 2049', year:2021, tyres:6, em:'BS-VI', city:'Nalgonda', state:'Telangana', price:1390000, h:6, color:'#D63A2F', engine:'3.8 L', power:'140 HP', load:'5 Ton'});
-  L({seller:'u_lak', cat:'trucks', sub:'lorries', brand:'Mahindra', model:'Blazo X 28', year:2022, tyres:10, em:'BS-VI', city:'Siddipet', state:'Telangana', price:2350000, h:8, color:'#E2541B', engine:'7.2 L', power:'280 HP', load:'19 Ton'});
-  L({seller:'u_sai', cat:'trucks', sub:'lorries', brand:'SML Isuzu', model:'Samrat GS', year:2021, tyres:6, em:'BS-IV', city:'Karimnagar', state:'Telangana', price:1175000, h:10, color:'#F2C230', engine:'3.4 L', power:'120 HP', load:'7 Ton'});
-  L({seller:'u_dec', cat:'trucks', sub:'lorries', brand:'BharatBenz', model:'2823R', year:2021, tyres:10, em:'BS-VI', city:'Bengaluru', state:'Karnataka', price:2875000, h:1, color:'#F3F4F7', engine:'7.2 L', power:'280 HP', load:'18 Ton'});
-  L({seller:'u_lak', cat:'trucks', sub:'lorries', brand:'Tata', model:'Signa 3118.T', year:2020, tyres:12, em:'BS-VI', city:'Guntur', state:'Andhra Pradesh', price:2690000, h:26, color:'#2E6FDB', power:'250 HP', load:'21 Ton'});
-  L({seller:'u_venk', cat:'trucks', sub:'lorries', brand:'Ashok Leyland', model:'Ecomet 1615', year:2017, tyres:6, em:'BS-IV', city:'Nizamabad', state:'Telangana', price:980000, h:30, color:'#F3F4F7', own:'2nd Owner'});
-  L({seller:'u_pat', cat:'trucks', sub:'lorries', brand:'Eicher', model:'Pro 3015', year:2019, tyres:6, em:'BS-IV', city:'Kurnool', state:'Andhra Pradesh', price:1520000, h:50, color:'#2D8C4E'});
-  // Tippers
-  L({seller:'u_sai', cat:'trucks', sub:'tippers', brand:'Tata', model:'Signa 2823.K', title:'Tata Signa 2823.K Tipper', year:2021, tyres:10, em:'BS-VI', city:'Hyderabad', state:'Telangana', price:2850000, h:2, color:'#1F5FD1'});
-  L({seller:'u_lak', cat:'trucks', sub:'tippers', brand:'Ashok Leyland', model:'2820', title:'Ashok Leyland 2820 Tipper', year:2020, tyres:10, em:'BS-IV', city:'Vijayawada', state:'Andhra Pradesh', price:2675000, h:3, color:'#4B5563'});
-  L({id:'TIP123450', seller:'u_venk', cat:'trucks', sub:'tippers', brand:'BharatBenz', model:'2823C', title:'BharatBenz 2823C Tipper', year:2022, tyres:10, em:'BS-VI', city:'Bangalore', state:'Karnataka', price:3025000, h:4, color:'#E9B21C', km:85000, engine:'7.2 L', power:'232 HP', load:'16 Ton', reg:'KA 01 AB 1234', desc:'BharatBenz 2823C Tipper in excellent condition. Single owner vehicle. All papers are clear and up to date. Vehicle is well maintained and ready for immediate use.\nNo any major work required.'});
-  L({seller:'u_kis', cat:'trucks', sub:'tippers', brand:'Eicher', model:'Pro 6028T', title:'Eicher Pro 6028T Tipper', year:2021, tyres:10, em:'BS-VI', city:'Nagpur', state:'Maharashtra', price:2450000, h:5, color:'#D63A2F'});
-  L({seller:'u_pat', cat:'trucks', sub:'tippers', brand:'Mahindra', model:'Blazo X 28 Tipper', year:2022, tyres:10, em:'BS-VI', city:'Indore', state:'Madhya Pradesh', price:2780000, h:6, color:'#E2541B'});
-  L({seller:'u_sai', cat:'trucks', sub:'tippers', brand:'SML Isuzu', model:'Samrat GS Tipper', year:2021, tyres:6, em:'BS-IV', city:'Karimnagar', state:'Telangana', price:1790000, h:7, color:'#F2C230', load:'9 Ton'});
-  L({seller:'u_rag', cat:'trucks', sub:'tippers', brand:'Volvo Eicher', model:'FMX 460 8x4', title:'Volvo FMX 460 8x4 Tipper', year:2019, tyres:12, em:'BS-IV', city:'Raipur', state:'Chhattisgarh', price:4650000, h:40, color:'#F3F4F7', engine:'12.8 L', power:'460 HP', load:'30 Ton'});
-  L({seller:'u_dec', cat:'trucks', sub:'tippers', brand:'Tata', model:'Prima 2830.K', title:'Tata Prima 2830.K Tipper', year:2018, tyres:10, em:'BS-IV', city:'Ballari', state:'Karnataka', price:2150000, h:60, color:'#F3F4F7', own:'2nd Owner'});
-  // Tankers
-  L({seller:'u_dec', cat:'trucks', sub:'tankers', brand:'Tata', model:'Signa 2818 Tanker', year:2020, tyres:10, em:'BS-VI', city:'Chennai', state:'Tamil Nadu', price:2400000, h:9, color:'#E5194D', load:'24 KL'});
-  L({seller:'u_lak', cat:'trucks', sub:'tankers', brand:'Ashok Leyland', model:'2620 Fuel Tanker', year:2019, tyres:10, em:'BS-IV', city:'Visakhapatnam', state:'Andhra Pradesh', price:2150000, h:20, color:'#F59E0B', load:'20 KL'});
-  L({seller:'u_met', cat:'trucks', sub:'tankers', brand:'BharatBenz', model:'1617R Water Tanker', year:2021, tyres:6, em:'BS-VI', city:'Pune', state:'Maharashtra', price:1690000, h:34, color:'#2563EB', load:'12 KL'});
-  L({seller:'u_pat', cat:'trucks', sub:'tankers', brand:'Eicher', model:'Pro 3015 Milk Tanker', year:2022, tyres:6, em:'BS-VI', city:'Anand', state:'Gujarat', price:1840000, h:52, color:'#0EA5E9', load:'10 KL'});
-  // Trailers
-  L({seller:'u_met', cat:'trucks', sub:'trailers', brand:'Tata', model:'Signa 4825.T', year:2021, tyres:22, em:'BS-VI', city:'Mumbai', state:'Maharashtra', price:3850000, h:12, color:'#A63A2B'});
-  L({seller:'u_dec', cat:'trucks', sub:'trailers', brand:'Ashok Leyland', model:'4220 Trailer', year:2019, tyres:22, em:'BS-IV', city:'Kolkata', state:'West Bengal', price:3290000, h:28, color:'#1F6FB2'});
-  L({seller:'u_pat', cat:'trucks', sub:'trailers', brand:'BharatBenz', model:'4023T', year:2020, tyres:18, em:'BS-VI', city:'Ludhiana', state:'Punjab', price:3550000, h:44, color:'#2F855A'});
-  L({seller:'u_rag', cat:'trucks', sub:'trailers', brand:'Volvo Eicher', model:'Pro 6040', title:'Eicher Pro 6040 Trailer', year:2018, tyres:18, em:'BS-IV', city:'Jamshedpur', state:'Jharkhand', price:2990000, h:70, color:'#C2410C', own:'2nd Owner'});
-  // Special purpose
-  L({seller:'u_sai', cat:'trucks', sub:'special', brand:'Tata', model:'LPT 1613 Fire Tender', year:2019, tyres:6, em:'BS-IV', city:'Hyderabad', state:'Telangana', price:2200000, h:15, color:'#D62B2B', body:'Fire Tender (4500 L)', load:'4500 L'});
-  L({seller:'u_dec', cat:'trucks', sub:'special', brand:'Ashok Leyland', model:'Boss Recovery Truck', year:2018, tyres:6, em:'BS-IV', city:'Bengaluru', state:'Karnataka', price:1450000, h:38, color:'#F59E0B', body:'Crane & Recovery'});
-  L({seller:'u_pat', cat:'trucks', sub:'special', brand:'Eicher', model:'Pro 2110 Refuse Compactor', year:2020, tyres:6, em:'BS-VI', city:'Coimbatore', state:'Tamil Nadu', price:1650000, h:64, color:'#16A34A', body:'Refuse Compactor 14 m³'});
-  // Mini trucks
-  L({seller:'u_gan', cat:'mini-trucks', brand:'Tata', model:'Ace Gold', year:2022, tyres:4, em:'BS-VI', city:'Delhi', state:'Delhi', price:625000, h:1.5, color:'#E9B21C', fuel:'Diesel'});
-  L({seller:'u_gan', cat:'mini-trucks', brand:'Mahindra', model:'Bolero Pickup', year:2021, tyres:4, em:'BS-VI', city:'Jaipur', state:'Rajasthan', price:785000, h:18, color:'#9CA3AF', engine:'2.5 L', power:'75 HP', load:'1.7 Ton'});
-  L({seller:'u_lak', cat:'mini-trucks', brand:'Ashok Leyland', model:'Dost+', year:2020, tyres:4, em:'BS-IV', city:'Lucknow', state:'Uttar Pradesh', price:540000, h:22, color:'#1F6FB2', engine:'1.5 L', power:'70 HP', load:'1.5 Ton'});
-  L({seller:'u_gan', cat:'mini-trucks', brand:'Maruti Suzuki', model:'Super Carry', year:2023, tyres:4, em:'BS-VI', city:'Surat', state:'Gujarat', price:495000, h:46, color:'#3B82F6', fuel:'CNG', engine:'1.2 L', power:'72 HP', load:'0.74 Ton'});
-  L({seller:'u_sai', cat:'mini-trucks', brand:'Tata', model:'Intra V30', year:2022, tyres:4, em:'BS-VI', city:'Hyderabad', state:'Telangana', price:735000, h:58, color:'#E5194D', engine:'1.5 L', power:'70 HP', load:'1.3 Ton'});
-  // Tractors
-  L({seller:'u_kis', cat:'tractors', brand:'Mahindra', model:'575 DI XP', year:2021, city:'Nagpur', state:'Maharashtra', price:710000, h:2.5, color:'#D62B2B'});
-  L({seller:'u_pat', cat:'tractors', brand:'Swaraj', model:'744 FE', year:2020, city:'Ludhiana', state:'Punjab', price:620000, h:14, color:'#E2541B', power:'48 HP'});
-  L({seller:'u_pat', cat:'tractors', brand:'Sonalika', model:'DI 745 III', year:2019, city:'Bhopal', state:'Madhya Pradesh', price:545000, h:33, color:'#2563EB', power:'50 HP'});
-  L({seller:'u_dec', cat:'tractors', brand:'John Deere', model:'5050 D', year:2022, city:'Hubballi', state:'Karnataka', price:845000, h:48, color:'#2F8F3A', power:'50 HP'});
-  L({seller:'u_kis', cat:'tractors', brand:'Massey Ferguson', model:'241 DI', year:2018, city:'Agra', state:'Uttar Pradesh', price:480000, h:80, color:'#B91C1C', power:'42 HP', own:'2nd Owner'});
-  // Buses
-  L({seller:'u_met', cat:'buses', brand:'Ashok Leyland', model:'Lynx', title:'Ashok Leyland Lynx', year:2019, em:'BS-IV', tyres:6, city:'Pune', state:'Maharashtra', price:4200000, h:3.5, color:'#E5194D', load:'45 Seater'});
-  L({seller:'u_dec', cat:'buses', brand:'Tata', model:'Starbus Ultra', year:2018, em:'BS-IV', tyres:6, city:'Chennai', state:'Tamil Nadu', price:2650000, h:27, color:'#2563EB', load:'41 Seater'});
-  L({seller:'u_sai', cat:'buses', brand:'Eicher', model:'Skyline Pro', year:2020, em:'BS-VI', tyres:6, city:'Hyderabad', state:'Telangana', price:2380000, h:41, color:'#F59E0B', load:'32 Seater'});
-  L({seller:'u_dec', cat:'buses', brand:'BharatBenz', model:'1624 Coach', year:2021, em:'BS-VI', tyres:6, city:'Bengaluru', state:'Karnataka', price:5850000, h:66, color:'#7C3AED', load:'49 Seater', power:'240 HP'});
-  // Construction
-  L({seller:'u_rag', cat:'construction', brand:'JCB', model:'205 NXT', year:2021, em:'BS-IV', city:'Hyderabad', state:'Telangana', price:3650000, h:4.5, color:'#F2B705', load:'20.5 Ton op. weight'});
-  L({seller:'u_rag', cat:'construction', brand:'JCB', model:'3DX Super', year:2020, em:'BS-IV', city:'Warangal', state:'Telangana', price:2150000, h:19, color:'#F2B705', body:'Backhoe Loader', power:'76 HP', load:'8 Ton op. weight'});
-  L({seller:'u_pat', cat:'construction', brand:'Tata Hitachi', model:'EX 200 LC', year:2019, em:'BS-IV', city:'Raipur', state:'Chhattisgarh', price:4100000, h:36, color:'#EA7A00'});
-  L({seller:'u_met', cat:'construction', brand:'CAT', model:'320D2', year:2018, em:'BS-IV', city:'Mumbai', state:'Maharashtra', price:4950000, h:55, color:'#D4A300', power:'148 HP'});
-  L({seller:'u_kis', cat:'construction', brand:'Komatsu', model:'PC 210', year:2017, em:'BS-IV', city:'Nashik', state:'Maharashtra', price:3600000, h:90, color:'#E9B21C', own:'2nd Owner'});
-  // Farm machines
-  L({seller:'u_pat', cat:'farm', brand:'Kartar', model:'4000 Combine', year:2021, em:'BS-IV', city:'Bathinda', state:'Punjab', price:2350000, h:11, color:'#C62828'});
-  L({seller:'u_kis', cat:'farm', brand:'Preet', model:'987 Combine', year:2020, em:'BS-IV', city:'Karnal', state:'Haryana', price:1980000, h:31, color:'#2F8F3A'});
-  L({seller:'u_dec', cat:'farm', brand:'John Deere', model:'W70 Combine', year:2022, em:'BS-IV', city:'Ludhiana', state:'Punjab', price:3200000, h:57, color:'#2F8F3A', power:'120 HP'});
-  L({seller:'u_kis', cat:'farm', brand:'Mahindra', model:'Arjun 605 Harvester', year:2019, em:'BS-IV', city:'Nanded', state:'Maharashtra', price:1550000, h:85, color:'#D62B2B'});
-  // Three wheeler
-  L({seller:'u_sai', cat:'three-wheeler', brand:'Piaggio', model:'Ape Xtra LDX', year:2022, tyres:3, city:'Hyderabad', state:'Telangana', price:245000, h:7.5, color:'#F5C400'});
-  L({seller:'u_gan', cat:'three-wheeler', brand:'Bajaj', model:'Maxima Cargo', year:2021, tyres:3, city:'Madurai', state:'Tamil Nadu', price:210000, h:24, color:'#2F8F3A'});
-  L({seller:'u_dec', cat:'three-wheeler', brand:'Mahindra', model:'Treo Zor', year:2023, tyres:3, city:'Bengaluru', state:'Karnataka', price:320000, h:39, color:'#2563EB', fuel:'Electric', engine:'Electric', power:'11 HP', em:'Zero Emission'});
-  L({seller:'u_gan', cat:'three-wheeler', brand:'TVS', model:'King Kargo', year:2022, tyres:3, city:'Kanpur', state:'Uttar Pradesh', price:225000, h:62, color:'#F5C400'});
-
-  // Demo conversations (mirroring the design screens)
-  const today = new Date(); const at = (h,m) => { const d=new Date(today); d.setHours(h,m,0,0); return Math.min(d.getTime(), now-60000); };
-  const chats = [
-    {id:'c_demo1', listingId:'TIP123450', buyerId:'u_demo', sellerId:'u_venk', createdAt:at(10,28), updatedAt:at(10,37), lastRead:{u_demo:at(10,37)}},
-    {id:'c_demo2', listingId:'LOR123456', buyerId:'u_demo', sellerId:'u_venk', createdAt:at(10,32), updatedAt:at(10,42), lastRead:{u_demo:at(10,40)}},
-  ];
-  const M = (chatId, senderId, text, ts, images=[]) => ({id:uid('m_'), chatId, senderId, text, images, createdAt:ts});
-  const messages = [
-    M('c_demo1','u_demo','Hello, I am interested in your BharatBenz 2823C Tipper.\nIs it still available?',at(10,28)),
-    M('c_demo1','u_venk','Yes, it is still available.\nTell me if you need more details.',at(10,30)),
-    M('c_demo1','u_demo','Can you share the condition of the vehicle and service history?',at(10,32)),
-    M('c_demo1','u_venk','Sure, the vehicle is in excellent condition.\nAll services are done regularly.\nYou can check the images for more details.',at(10,34)),
-    M('c_demo1','u_venk','',at(10,34)+1000,['side','flip','interior','rear'].map(v=>'art:TIP123450:'+v)),
-    M('c_demo1','u_demo','Thank you. Please let me know the final price.',at(10,35)),
-    M('c_demo1','u_venk','The price is ₹30,25,000 and slightly negotiable.\nYou can come and check the vehicle.',at(10,36)),
-    M('c_demo1','u_demo','Okay, I will visit tomorrow. Thank you.',at(10,37)),
-    M('c_demo2','u_demo','Hello, I am interested in your Tata LPT 1613.\nIs it still available?',at(10,32)),
-    M('c_demo2','u_venk','Yes, it is still available.\nTell me if you need more details.',at(10,35)),
-    M('c_demo2','u_demo','Can you share the condition and service history?',at(10,36)),
-    M('c_demo2','u_venk','Sure, I will share all details with you.\nPlease check the images.',at(10,38)),
-    M('c_demo2','u_venk','',at(10,39),['side','rear','interior','flip'].map(v=>'art:LOR123456:'+v)),
-    M('c_demo2','u_demo','Thank you. Please let me know the final price.',at(10,40)),
-    M('c_demo2','u_venk','The price is ₹12,50,000 and slightly negotiable.\nYou can come and check the vehicle.',at(10,41)),
-    M('c_demo2','u_demo','Okay, I will visit tomorrow. Thank you.',at(10,42)),
-  ];
-  const notifications = [
-    {id:uid('n_'), userId:'u_demo', title:'Price drop nearby', body:'Ashok Leyland Ecomet 1615 in Nizamabad is now ₹9,80,000.', link:'#/list/trucks/lorries', read:false, createdAt:now-5*H, icon:'tag'},
-    {id:uid('n_'), userId:'u_demo', title:'New tippers in Telangana', body:'4 new tippers were listed near Hyderabad today.', link:'#/list/trucks/tippers', read:false, createdAt:now-7*H, icon:'tipper'},
-    {id:uid('n_'), userId:'u_demo', title:'Complete your profile', body:'Add your business name so sellers know who they are talking to.', link:'#/profile/settings', read:false, createdAt:now-30*H, icon:'user'},
-  ];
-  DB.init({version:1, users, listings:rows, favorites:{u_demo:['TIP123450','LOR123456']}, chats, messages, finance:[], notifications, seededAt:now});
-}
 
 /* ---------------------------- UI HELPERS ---------------------------- */
 function toast(msg, type='ok'){
@@ -1402,18 +1201,21 @@ function topbar({back, title, sub, right='', home=false}={}){
 const favBellRight = () => `<a href="#/favorites" class="icon-btn" style="color:var(--primary)" aria-label="Saved vehicles">${I('heart')}</a><a href="#/notifications" class="icon-btn" aria-label="Notifications">${I('bell')}<span data-badge="bell"></span></a>`;
 
 function globalBar(active){
-  const me = API.auth.me();
+  const me = API.auth.me(); const isOwner = API.auth.isOwner();
   const link = (h, n, k) => `<a href="${h}" class="${active===k?'on':''}">${n}</a>`;
   return `<div class="gbar"><div class="wrap topbar-in">
-    <a href="#/" class="brand-mark"><span class="logo">${I('truck','sm')}</span>Spidy</a>
-    <nav class="desk-nav">${link('#/','Home','home')}${link('#/buy','Buy','buy')}${link('#/search','Search','search')}${link('#/sell','Sell','sell')}${link('#/messages','Messages','messages')}</nav>
+    <a href="#/" class="brand-mark"><span class="logo">${I('truck','sm')}</span>Autoreboot</a>
+    <nav class="desk-nav">${link('#/','Home','home')}${link('#/buy','Buy','buy')}${link('#/search','Search','search')}${isOwner ? link('#/owner','Owner dashboard','owner') : link('#/sell','Sell','sell')+link('#/messages','Messages','messages')}</nav>
     <div style="flex:1"></div>
-    <a href="#/messages" class="icon-btn" aria-label="Messages">${I('msg')}<span data-badge="msgdot"></span></a>
-    ${favBellRight()}
-    ${me ? `<a href="#/profile" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:4px 10px 4px 4px;border-radius:999px;border:1px solid var(--line)">${avatar(me).replace('class="avatar ','class="avatar " style="width:32px;height:32px;font-size:12px;background:'+me.color+'"')}${esc(me.name.split(' ')[0])}</a>` : `<a href="#/login" class="btn btn-primary btn-sm">Log in</a>`}
+    ${isOwner ? '' : `<a href="#/messages" class="icon-btn" aria-label="Messages">${I('msg')}<span data-badge="msgdot"></span></a>${favBellRight()}`}
+    ${me ? `<a href="${isOwner?'#/owner':'#/profile'}" style="display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:4px 10px 4px 4px;border-radius:999px;border:1px solid var(--line)">${avatar(me).replace('class="avatar ','class="avatar " style="width:32px;height:32px;font-size:12px;background:'+me.color+'"')}${esc(me.name.split(' ')[0])}</a>` : `<a href="#/login" class="btn btn-primary btn-sm">Log in</a>`}
   </div></div>`;
 }
 function bottomNav(active){
+  if (API.auth.isOwner()){
+    const o = (h, ic, n, k) => `<a href="${h}" class="bn ${active===k?'on':''}">${I(ic)}${n}</a>`;
+    return `<nav class="bottom-nav" aria-label="Main"><div class="bottom-nav-in">${o('#/','home','Home','home')}${o('#/search','search','Search','search')}${o('#/owner','gauge','Dashboard','owner')}</div></nav>`;
+  }
   const b = (h, ic, n, k) => `<a href="${h}" class="bn ${active===k?'on':''}">${I(ic)}${n}${k==='messages'?'<span data-badge="msgdot"></span>':''}</a>`;
   return `<nav class="bottom-nav" aria-label="Main"><div class="bottom-nav-in">${b('#/','home','Home','home')}${b('#/search','search','Search','search')}
     <a href="#/sell" class="bn-sell"><span class="plus">${I('plus','lg')}</span>Sell</a>${b('#/messages','msg','Messages','messages')}${b('#/profile','user','Profile','profile')}</div></nav>`;
@@ -1453,7 +1255,13 @@ const HERO = [
 /* ------------------------------- VIEWS ------------------------------ */
 const Views = {};
 
+/* Banner slides: the owner's banners if any are shown, otherwise the built-in slides. */
+const heroSlides = () => Store.banners.length
+  ? Store.banners.map((b,i) => ({h:b.title, p:b.description, cta:b.buttonText || (b.link ? 'Learn more' : ''), href:b.link, img:b.hasImage ? `/api/banners/${b.id}/image?v=${b.v}` : '', art:i%4}))
+  : HERO.map((s,i) => ({h:s.h, p:s.p, cta:s.cta, href:s.href, img:'', art:i}));
+
 Views.home = () => {
+  const slides = heroSlides();
   const recent = API.listings.querySync({}).slice(0, 12);
   const total = API.listings.count({});
   return { nav:'home', html: `
@@ -1464,8 +1272,8 @@ Views.home = () => {
       <span class="home-icons">${favBellRight()}</span>
     </div>
     <section class="hero" aria-roledescription="carousel">
-      ${HERO.map((s,i)=>`<div class="hero-slide ${i===0?'on':''}" data-slide="${i}">${heroScene(i)}<div class="hero-copy"><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p><a href="${s.href}" class="btn btn-primary">${esc(s.cta)}</a></div></div>`).join('')}
-      <div class="hero-dots">${HERO.map((_,i)=>`<button class="${i===0?'on':''}" data-dot="${i}" aria-label="Slide ${i+1}"></button>`).join('')}</div>
+      ${slides.map((s,i)=>`<div class="hero-slide ${i===0?'on':''}" data-slide="${i}">${s.img?`<img class="hero-img" src="${esc(s.img)}" alt=""${i?' loading="lazy"':''}>`:heroScene(s.art)}<div class="hero-copy"><h2>${esc(s.h)}</h2>${s.p?`<p>${esc(s.p)}</p>`:''}${s.href&&s.cta?`<a href="${esc(s.href)}" class="btn btn-primary"${/^https?:/i.test(s.href)?' target="_blank" rel="noopener noreferrer"':''}>${esc(s.cta)}</a>`:''}</div></div>`).join('')}
+      ${slides.length>1?`<div class="hero-dots">${slides.map((_,i)=>`<button class="${i===0?'on':''}" data-dot="${i}" aria-label="Slide ${i+1}"></button>`).join('')}</div>`:''}
     </section>
     <div class="cats">${CATS.map(c=>`<a class="cat" href="#/c/${c.id}"><div class="art">${catArt(c.id, c.id==='trucks'?'trailers':null, c.id==='trucks'?'#1D4ED8':c.color)}</div>${esc(c.name)}</a>`).join('')}</div>
     <div class="bs-row">
@@ -1482,12 +1290,12 @@ Views.home = () => {
       <div><span class="t-ic">${I('lock','lg')}</span>Private chat, number stays hidden</div>
       <div><span class="t-ic">${I('headset','lg')}</span>Finance and support team</div>
     </div>
-    <div class="footer">Spidy · Commercial vehicle marketplace · Data is stored on this device</div>
+    <div class="footer">Autoreboot · Commercial vehicle marketplace</div>
   </div>`,
   mount(root){
     let i = 0, timer;
     const show = n => { i = n; $$('.hero-slide',root).forEach((s,k)=>s.classList.toggle('on',k===n)); $$('[data-dot]',root).forEach((d,k)=>d.classList.toggle('on',k===n)); };
-    const start = () => { clearInterval(timer); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) timer = setInterval(()=>show((i+1)%HERO.length), 5200); };
+    const start = () => { clearInterval(timer); if (!matchMedia('(prefers-reduced-motion: reduce)').matches) if (slides.length > 1) timer = setInterval(()=>show((i+1)%slides.length), 5200); };
     $$('[data-dot]',root).forEach(d=>d.onclick=()=>{ show(+d.dataset.dot); start(); });
     const hero = $('.hero',root); hero.onmouseenter=()=>clearInterval(timer); hero.onmouseleave=start; start();
     App.cleanup.push(()=>clearInterval(timer));
@@ -1602,7 +1410,7 @@ Views.search = (_, q) => {
   const f = parseFilters(q);
   const hasQuery = f.q || f.category || activeFilterCount(f) || q.get('sort');
   const rows = hasQuery ? API.listings.querySync(f) : [];
-  let recent = []; try { recent = JSON.parse(localStorage.getItem('spidy_recent')||'[]'); } catch(e){}
+  let recent = []; try { recent = JSON.parse(localStorage.getItem('autoreboot_recent')||'[]'); } catch(e){}
   const popular = ['Tipper','Tata','BS-VI','Tractor','Hyderabad','JCB','Bus','Tanker'];
   const nf = activeFilterCount(f);
   return { nav:'search', html: `${topbar({back:'#/', title:'Search', right:favBellRight()})}
@@ -1618,10 +1426,10 @@ Views.search = (_, q) => {
   </div>`,
   mount(root){
     $('[data-search]',root).onsubmit = e => { e.preventDefault(); const v=e.target.q.value.trim();
-      if (v){ recent=[v, ...recent.filter(r=>r.toLowerCase()!==v.toLowerCase())].slice(0,8); try{localStorage.setItem('spidy_recent',JSON.stringify(recent));}catch(er){} }
+      if (v){ recent=[v, ...recent.filter(r=>r.toLowerCase()!==v.toLowerCase())].slice(0,8); try{localStorage.setItem('autoreboot_recent',JSON.stringify(recent));}catch(er){} }
       go('#/search' + filterQuery({...f, q:v})); };
     const cq=$('[data-clearq]',root); if(cq) cq.onclick=()=>go('#/search'+filterQuery({...f,q:''}));
-    const cr=$('[data-clear-recent]',root); if(cr) cr.onclick=()=>{ try{localStorage.removeItem('spidy_recent');}catch(e){} App.render(); };
+    const cr=$('[data-clear-recent]',root); if(cr) cr.onclick=()=>{ try{localStorage.removeItem('autoreboot_recent');}catch(e){} App.render(); };
     const s=$('[data-sort]',root); if(s) s.onchange=e=>go('#/search'+filterQuery({...f, sort:e.target.value}));
     const open = () => filterSheet(f, f.category, n => go('#/search' + filterQuery(n)));
     $('[data-filters]',root).onclick = open;
@@ -1635,14 +1443,15 @@ Views.details = ({id}) => {
   const imgs = imgsOf(l);
   const similar = API.listings.querySync({category:l.category, subtype:l.subtype||undefined}).filter(x=>x.id!==l.id).slice(0,8);
   const backTo = l.category==='trucks' ? `#/list/trucks/${l.subtype}` : `#/list/${l.category}/_`;
-  const specs = [['gauge',usageLabel(l),usageFmt(l)],['engine','Engine',l.engine],['bolt','Power',l.power],['weight',l.category==='buses'?'Seating':'Load Capacity',l.load],['user','Ownership',l.ownership],['pin','Location',`${l.city}, ${STATE_CODE[l.state]||''}`]];
-  const kv = [['Brand',(BRAND_META[l.brand]||{label:l.brand}).label.replace(' Motors','')],['Model',l.model],['Year',l.year],['Registration',l.regNo||'—'],['Emission Norm',l.emission],['Body Type',l.body],[l.category==='buses'?'Seating':'Load Capacity',l.load],l.tyres?['No. of Tyres',l.tyres+((l.highlights||[]).includes('New Tyres')?' (New Tyres)':'')]:null,[usageLabel(l),usageFmt(l)],['Engine',l.engine],['Power',l.power],['Fuel Type',l.fuel],['Transmission',l.transmission]].filter(Boolean);
+  const specs = [['gauge',usageLabel(l),usageFmt(l)],['engine','Engine',l.engine],['bolt','Power',l.power],['weight',l.category==='buses'?'Seating':'Load Capacity',l.load],['pin','Location',`${l.city}, ${STATE_CODE[l.state]||''}`]];
+  const kv = [['Brand',(BRAND_META[l.brand]||{label:l.brand}).label.replace(' Motors','')],['Model',l.model],['Year',l.year],['Registration',l.regNo||'—'],['Emission Norm',l.emission],['Body Type',l.body],[l.category==='buses'?'Seating':'Load Capacity',l.load],l.tyres?['No. of Tyres',l.tyres+((l.highlights||[]).includes('New Tyres')?' (New Tyres)':'')]:null,[usageLabel(l),usageFmt(l)],['Engine',l.engine],['Power',l.power],['Fuel Type',l.fuel],['Transmission',l.transmission],...Store.formFields.filter(f=>!f.builtin && l.extras && l.extras[f.key]!==undefined && l.extras[f.key]!=='').map(f=>[f.label, typeof l.extras[f.key]==='boolean' ? (l.extras[f.key]?'Yes':'No') : l.extras[f.key]])].filter(x => x && x[1] !== '' && x[1] != null);
   const ctas = mine
-    ? `<a href="#/sell/${l.id}" class="btn btn-outline">${I('edit')} Edit listing</a><button class="btn btn-primary" data-sold>${I('check')} ${l.status==='sold'?'Mark as available':'Mark as sold'}</button>`
+    ? (l.status==='removed' ? '' : `<a href="#/sell/${l.id}" class="btn btn-outline">${I('edit')} Edit listing</a><button class="btn btn-primary" data-sold>${I('check')} ${l.status==='sold'?'Mark as available':'Mark as sold'}</button>`)
     : `<button class="btn btn-outline" data-chat>${I('msg')} Message with seller</button><a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance options</a><div class="note">Get best loan offers for this vehicle</div>`;
   return { nav:'home', html: `${topbar({back:backTo, title:typeLabel(l), sub:'Vehicle Details', right:`${heartBtn(l.id,'icon-btn')}<button class="icon-btn" data-share aria-label="Share">${I('share')}</button>`})}
   <div class="wrap page">
     ${l.status==='sold'?`<div class="notice" style="background:var(--line-2);border-color:var(--line)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This vehicle is marked as sold.</b><br>Browse similar vehicles below.</div></div>`:''}
+    ${l.status==='removed'?`<div class="notice" style="background:var(--primary-50);border-color:var(--primary-100)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This listing was removed by the Autoreboot team.</b><br>It is hidden from buyers.</div></div>`:''}
     <div class="det-grid">
       <div>
         <div class="gallery"><div class="g-main" data-main>${renderImg(imgs[0], l.title)}</div><span class="g-count" data-count>1 / ${imgs.length}</span>
@@ -1660,7 +1469,7 @@ Views.details = ({id}) => {
         ${mine?'':`<div class="side-ctas"><button class="btn btn-outline" data-chat>${I('msg')} Message seller</button><a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance</a></div>`}
       </aside>
     </div>
-    <div class="card specs">${specs.map(([ic,k,v])=>`<div class="spec">${I(ic)}<div style="min-width:0"><small>${esc(k)}</small><b>${esc(v)}</b></div></div>`).join('')}</div>
+    <div class="card specs">${specs.filter(x=>x[2]!==''&&x[2]!=null).map(([ic,k,v])=>`<div class="spec">${I(ic)}<div style="min-width:0"><small>${esc(k)}</small><b>${esc(v)}</b></div></div>`).join('')}</div>
     <div class="det-cols">
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="card panel"><h3>Vehicle Highlights</h3>${(l.highlights||[]).length?(l.highlights).map(h=>`<div class="hl">${I('checkCircle','sm')} ${esc(h)}</div>`).join(''):'<p class="muted" style="margin:0">The seller has not added highlights.</p>'}</div>
@@ -1680,19 +1489,19 @@ Views.details = ({id}) => {
     const p=$('[data-prev]',root), nx=$('[data-next]',root); if(p){p.onclick=()=>show(i-1); nx.onclick=()=>show(i+1);}
     $('[data-main]',root).onclick=()=>lightbox(imgs,i); $('[data-main]',root).style.cursor='zoom-in';
     $('[data-share]',root).onclick = async () => {
-      const url = location.href; const data={title:l.title, text:`${l.title} for ${inr(l.price)} on Spidy`, url};
+      const url = location.href; const data={title:l.title, text:`${l.title} for ${inr(l.price)} on Autoreboot`, url};
       try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(url); toast('Link copied'); } } catch(e){ if(e.name!=='AbortError') toast('Could not share this link','bad'); }
     };
     $$('[data-chat]',root).forEach(ch => ch.onclick = async () => {
       if (!API.meId()) return needLogin('#/v/'+l.id);
       try { const cid = await API.chats.open(l.id); go('#/chat/'+cid); } catch(e){ toast(e.message,'bad'); }
     });
-    const sd=$('[data-sold]',root); if(sd) sd.onclick = async () => { await API.listings.setStatus(l.id, l.status==='sold'?'active':'sold'); toast(l.status==='sold'?'Marked as available':'Marked as sold'); App.render(); };
+    const sd=$('[data-sold]',root); if(sd) sd.onclick = async () => { try { const was=l.status; await API.listings.setStatus(l.id, was==='sold'?'active':'sold'); toast(was==='sold'?'Marked as available':'Marked as sold'); App.render(); } catch(e){ toast(e.message,'bad'); } };
   }};
 };
 
 Views.seller = ({id}) => {
-  const u = API.auth.user(id); if (!u) return Views.notFound();
+  const u = API.auth.user(id); if (u.deleted) return Views.notFound();
   const rows = API.listings.querySync({sellerId:id});
   return { nav:'home', html: `${topbar({back:'#/', title:'Seller profile'})}
   <div class="wrap page"><div class="card prof-head">${avatar(u)}<div><h2>${esc(u.name)} ${u.verified?`<span class="verified">${I('shieldCheck','sm')}</span>`:''}</h2><div class="muted">${esc(u.city)}, ${esc(u.state)} · Member since ${monthYear(u.createdAt)}</div>${u.reviews?`<div class="stars" style="margin-top:4px">${I('star','sm')} ${u.rating} <span class="muted">(${u.reviews} Reviews)</span></div>`:''}</div>
@@ -1730,11 +1539,12 @@ Views.chat = ({id}) => {
     const body = $('[data-body]', root); let pending = [];
     const draw = () => {
       const msgs = API.chats.messages(id); let lastDay = ''; let h = '';
+      const oRead = (API.chats.get(id)||{}).otherRead || 0;
       if (!msgs.length) h = `<div class="empty" style="padding:30px"><p>Say hello and ask about the vehicle. Your number stays hidden.</p></div>`;
       msgs.forEach(m => {
         const d = dayLabel(m.createdAt); if (d!==lastDay){ h+=`<div class="day">${d}</div>`; lastDay=d; }
         const mine = m.senderId===me; const u = mine ? null : other;
-        h += `<div class="msg-row ${mine?'me':''}">${mine?'':avatar(u)}<div class="bubble">${m.images&&m.images.length?`<div class="imgs">${m.images.map((r,k)=>`<button data-img="${m.id}:${k}">${renderImg(r)}</button>`).join('')}</div>`:''}${m.text?esc(m.text):''}<div class="time">${clock(m.createdAt)}${mine?I('checks','xs'):''}</div></div></div>`;
+        h += `<div class="msg-row ${mine?'me':''}">${mine?'':avatar(u)}<div class="bubble">${m.images&&m.images.length?`<div class="imgs">${m.images.map((r,k)=>`<button data-img="${m.id}:${k}">${renderImg(r)}</button>`).join('')}</div>`:''}${m.text?esc(m.text):''}<div class="time">${clock(m.createdAt)}${mine?`<span class="tick ${m.createdAt <= oRead ? 'seen' : ''}" title="${m.createdAt <= oRead ? 'Seen' : 'Delivered'}">${I('checks','xs')}</span>`:''}</div></div></div>`;
       });
       if (API.chats.typing[id]) h += `<div class="msg-row">${avatar(other)}<div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>`;
       body.innerHTML = h; body.scrollTop = body.scrollHeight;
@@ -1744,6 +1554,8 @@ Views.chat = ({id}) => {
     App.chatDraw = draw; App.cleanup.push(()=>{ App.chatDraw=null; });
     draw();
     const input = $('[data-input]',root);
+    let lastTyping = 0;
+    if (!other.isBot) input.addEventListener('input', () => { const t = Date.now(); if (input.value && t - lastTyping > 2500){ lastTyping = t; http('POST', `/api/chats/${encodeURIComponent(id)}/typing`).catch(()=>{}); } });
     const drawPending = () => { $('[data-pending]',root).innerHTML = pending.map((p,k)=>`<div><img src="${p}" alt=""><button type="button" data-rm="${k}" aria-label="Remove">${I('x','xs')}</button></div>`).join(''); $$('[data-rm]',root).forEach(b=>b.onclick=()=>{pending.splice(+b.dataset.rm,1);drawPending();}); };
     const send = async text => {
       try { await API.chats.send(id, {text, images:pending}); pending=[]; drawPending(); input.value=''; draw(); }
@@ -1761,7 +1573,7 @@ Views.chat = ({id}) => {
       m.innerHTML=`<button data-a="view">${I('eye','sm')} View vehicle</button>${iAmSeller?'':`<button data-a="fin">${I('bank','sm')} Check finance</button>`}<button data-a="clear">${I('trash','sm')} Delete conversation</button>`;
       host.appendChild(m);
       m.onclick = async e => { const a=e.target.closest('[data-a]')?.dataset.a; m.remove(); if(a==='view') go('#/v/'+l.id); if(a==='fin') go('#/finance/'+l.id);
-        if(a==='clear' && await confirmSheet({title:'Delete this conversation?', body:'All messages in this chat will be removed from this device.', ok:'Delete'})){ DB.set('messages', DB.get('messages').filter(x=>x.chatId!==id)); DB.set('chats', DB.get('chats').filter(x=>x.id!==id)); toast('Conversation deleted'); go('#/messages'); } };
+        if(a==='clear' && await confirmSheet({title:'Delete this conversation?', body:'This conversation will be removed from your inbox. The other person keeps their copy.', ok:'Delete'})){ try { await API.chats.remove(id); toast('Conversation deleted'); go('#/messages'); } catch(er){ toast(er.message,'bad'); } } };
       setTimeout(()=>document.addEventListener('click',function h(){ m.remove(); document.removeEventListener('click',h); }),0); };
     if (matchMedia('(min-width:960px)').matches) input.focus();
   }};
@@ -1806,7 +1618,7 @@ Views.finance = ({id}) => {
       ${field('city','building','City','text','Enter your city', me?.city||'')}
       ${field('state','map','State','select','', me?.state||'')}
       ${field('pincode','pin','Pincode','text','Enter your pincode','', 'inputmode="numeric" maxlength="6"')}
-      <div class="important">${I('shieldCheck')}<div><b style="color:var(--ink)">Important:</b> By submitting this form, you authorize <b style="color:var(--ink)">Spidy</b> to contact you regarding finance assistance through call, SMS or WhatsApp.<br>Your details are not directly shared with finance companies.</div></div>
+      <div class="important">${I('shieldCheck')}<div><b style="color:var(--ink)">Important:</b> By submitting this form, you authorize <b style="color:var(--ink)">Autoreboot</b> to contact you regarding finance assistance through call, SMS or WhatsApp.<br>Your details are not directly shared with finance companies.</div></div>
       <button class="btn btn-primary btn-block" style="height:56px;font-size:16px" data-submit>${I('send')} Submit & get finance assistance</button>
       <p class="muted" style="text-align:center;font-size:13px;margin:12px 0 0;display:flex;align-items:center;justify-content:center;gap:6px">${I('lock','xs')} Your information is protected and used only for finance assistance.</p>
     </form>
@@ -1841,7 +1653,7 @@ Views.financeDone = ({id}) => {
   </div></div>`};
 };
 
-/* ---- image compression for uploads (keeps localStorage small) ---- */
+/* ---- image compression for uploads (keeps requests small) ---- */
 function compressImage(file, max=1000, q=.72){
   return new Promise((res, rej) => {
     if (!file.type.startsWith('image/')) return rej(new Error('Only image files can be added'));
@@ -1856,107 +1668,142 @@ function compressImage(file, max=1000, q=.72){
 }
 
 /* ---- sell / edit ---- */
+/* The form is driven by Store.formFields, which the owner edits in the owner console (Sell form tab). */
+const FORM_GROUPS = ['vehicle','details','media','pricing'];
+const FORM_TITLES = {vehicle:'Vehicle', details:'Details', media:'Photos', pricing:'Price & location'};
 Views.sell = ({id}) => {
   const editing = id ? API.listings.get(id) : null;
-  if (id && (!editing || editing.sellerId !== API.meId())) return Views.notFound('You can only edit your own listings.');
-  const DKEY = 'spidy_draft_' + API.meId();
+  if (id && (!editing || editing.sellerId !== API.meId() || editing.status === 'removed')) return Views.notFound('You can only edit your own listings.');
+  const DKEY = 'autoreboot_draft_' + API.meId();
+  const me0 = API.auth.me();
   let d;
   if (editing) d = JSON.parse(JSON.stringify(editing));
   else { try { d = JSON.parse(localStorage.getItem(DKEY)); } catch(e){} }
-  d = d || {category:'', subtype:'', brand:'', model:'', year:'', tyres:'', emission:'BS-VI', fuel:'Diesel', transmission:'Manual', km:'', ownership:'1st Owner', regNo:'', engine:'', power:'', load:'', body:'', photos:[], color:'#F3F4F7', price:'', negotiable:true, city:API.auth.me().city||'', state:API.auth.me().state||'', description:'', highlights:['Excellent Running Condition','Regularly Serviced']};
-  let step = 1;
-  const STEPS = ['Vehicle type','Details','Photos','Price & location'];
+  d = d || {category:'', subtype:'', brand:'', model:'', year:'', tyres:'', emission:'', fuel:'', transmission:'', km:'', regNo:'', engine:'', power:'', load:'', body:'', photos:[], color:'#F3F4F7', price:'', negotiable:true, city:me0.city||'', state:me0.state||'', description:'', highlights:['Excellent Running Condition','Regularly Serviced'], extras:{}};
+  d.extras = d.extras || {}; d.photos = d.photos || []; d.highlights = d.highlights || [];
+  let step = editing ? 2 : 1; // 1 = "What are you selling?", 2 = the form
   const saveDraft = () => { if (!editing) try { localStorage.setItem(DKEY, JSON.stringify({...d, photos:d.photos.slice(0,3)})); } catch(e){} };
   const spec = () => SPEC_DEFAULTS[d.category==='trucks' ? (d.subtype||'lorries') : (d.category||'lorries')] || SPEC_DEFAULTS.lorries;
   const isHours = () => HOURS_CATS.includes(d.category);
-  const inp = (k, label, ph, type='text', extra='') => `<div class="field"><label for="s_${k}">${label}</label><input class="input" id="s_${k}" data-k="${k}" type="${type}" placeholder="${esc(ph)}" value="${esc(d[k]??'')}" ${extra}><div class="err-msg" data-err="${k}" hidden></div></div>`;
-  const sel = (k, label, opts) => `<div class="field"><label for="s_${k}">${label}</label><select class="input" id="s_${k}" data-k="${k}">${opts.map(o=>{ const [v,n]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(d[k])===String(v)?'selected':''}>${esc(n)}</option>`; }).join('')}</select><div class="err-msg" data-err="${k}" hidden></div></div>`;
+  const fieldsOn = () => Store.formFields.filter(f => f.enabled && !(f.key==='subtype' && d.category!=='trucks'))
+    .sort((a,b) => FORM_GROUPS.indexOf(a.group)-FORM_GROUPS.indexOf(b.group) || a.sort-b.sort);
+  const fieldByKey = k => Store.formFields.find(f => f.key===k);
+  const getV = f => f.builtin ? d[f.key] : d.extras[f.key];
+  const setV = (f, v) => { if (f.builtin) d[f.key] = v; else d.extras[f.key] = v; };
+  const labelOf = f => f.key==='km' && f.label==='KM driven' ? (isHours() ? 'Hours used' : 'KM driven')
+    : f.key==='load' && f.label==='Load capacity' && d.category==='buses' ? 'Seating' : f.label;
+  const phOf = f => {
+    if (f.placeholder) return f.placeholder; const sp = spec(), y = new Date().getFullYear();
+    if (f.key==='title') return d.brand ? `${d.brand} ${d.model||''} – e.g. single owner, new tyres`.replace('  ',' ') : 'e.g. Tata LPT 1613 in excellent condition';
+    return {year:String(y-3), km:isHours()?'e.g. 2400':'e.g. 85000', regNo:'e.g. TS 07 UF 1234', engine:sp.engine, power:sp.power, load:sp.load, body:sp.body, price:'e.g. 1250000', city:'e.g. Khammam'}[f.key] || '';
+  };
+  const REQ = ' <span style="color:var(--primary)">*</span>';
+  const field = (f, inner, wide) => `<div class="field" ${wide?'style="grid-column:1/-1"':''}><label for="s_${f.key}">${esc(labelOf(f))}${f.required?REQ:''}</label>${inner}<div class="err-msg" data-err="${f.key}" hidden></div></div>`;
+  const options = (list, cur, blank) => (blank ? `<option value="">${esc(blank)}</option>` : '') + list.map(o => `<option value="${esc(o)}" ${String(cur)===String(o)?'selected':''}>${esc(o)}</option>`).join('');
 
-  function stepHtml(){
-    if (step===1){
-      const brands = d.category ? brandsFor(d.category, d.subtype||'lorries') : [];
-      const series = (brands.find(b=>b[0]===d.brand)||[])[1];
-      return `<h2 style="margin:0 0 12px;font-size:18px">What are you selling?</h2>
-      <div class="pick-grid">${CATS.map(c=>`<button class="pick ${d.category===c.id?'on':''}" data-cat="${c.id}">${catArt(c.id, c.id==='trucks'?'lorries':null, c.id==='trucks'?'#1D4ED8':c.color)}${esc(c.name)}</button>`).join('')}</div>
-      <div class="err-msg" data-err="category" hidden></div>
-      ${d.category==='trucks'?`<h2 style="margin:22px 0 12px;font-size:18px">Truck type</h2><div class="pick-grid">${SUBS.map(s=>`<button class="pick ${d.subtype===s.id?'on':''}" data-sub="${s.id}">${catArt('trucks', s.id, s.color)}${esc(s.name)}</button>`).join('')}</div><div class="err-msg" data-err="subtype" hidden></div>`:''}
-      ${d.category && (d.category!=='trucks'||d.subtype)?`<h2 style="margin:22px 0 12px;font-size:18px">Brand</h2><div class="chips" style="flex-wrap:wrap;padding:0;margin:0">${brands.map(([b])=>`<button class="chip ${d.brand===b?'on':''}" data-brand="${esc(b)}">${esc((BRAND_META[b]||{label:b}).label)}</button>`).join('')}</div><div class="err-msg" data-err="brand" hidden></div>
-      <div style="margin-top:16px">${inp('model','Model name', series ? 'e.g. '+series.split(',')[0] : 'e.g. LPT 1613','text','list="models"')}<datalist id="models">${(series||'').split(',').map(s=>`<option value="${esc(s)}">`).join('')}</datalist></div>`:''}`;
+  function fieldHtml(f){
+    const v = getV(f) ?? '';
+    switch (f.type){
+      case 'subtype': return field(f, `<select class="input" id="s_subtype" data-fk="subtype"><option value="">Select ${esc(f.label.toLowerCase())}</option>${SUBS.map(s=>`<option value="${s.id}" ${d.subtype===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`);
+      case 'brand': {
+        const need = d.category==='trucks' && !d.subtype; const names = brandsFor(d.category, d.subtype||'lorries').map(b=>b[0]);
+        if (d.brand && !names.includes(d.brand)) names.unshift(d.brand);
+        return field(f, `<select class="input" id="s_brand" data-fk="brand" ${need?'disabled':''}>${options(names.map(n=>n), d.brand, need ? 'Select truck type first' : 'Select brand')}</select>`);
+      }
+      case 'text': {
+        let extra = ''; let dl = '';
+        if (f.key==='model'){ const series = (brandsFor(d.category, d.subtype||'lorries').find(b=>b[0]===d.brand)||[])[1]; extra = 'list="models"'; dl = `<datalist id="models">${(series||'').split(',').filter(Boolean).map(s=>`<option value="${esc(s)}">`).join('')}</datalist>`; }
+        if (f.key==='regNo') extra = 'style="text-transform:uppercase"';
+        if (f.key==='title') extra = 'maxlength="100"';
+        return field(f, `<input class="input" id="s_${f.key}" data-fk="${f.key}" type="text" placeholder="${esc(f.key==='model' && !f.placeholder ? 'e.g. LPT 1613' : phOf(f))}" value="${esc(v)}" ${extra}>${dl}`);
+      }
+      case 'number': return field(f, `<input class="input" id="s_${f.key}" data-fk="${f.key}" type="number" inputmode="numeric" placeholder="${esc(phOf(f))}" value="${esc(v)}" min="0">`) + (f.key==='price' ? `<div class="muted" style="font-size:13px;grid-column:1/-1;margin-top:-6px" data-pricehint>${+d.price?`Shown as ${inr(d.price)} (${inrShort(+d.price)})`:''}</div>` : '');
+      case 'textarea': return field(f, `<textarea class="input" id="s_${f.key}" data-fk="${f.key}" maxlength="1200" placeholder="${esc(f.placeholder || (f.key==='description' ? 'Condition, service history, papers, reason for selling…' : ''))}">${esc(v)}</textarea>`, true);
+      case 'select': {
+        let list = f.options.slice(); if (v && !list.includes(v)) list.unshift(v);
+        if (f.builtin && !v && list.length){ const def = {emission:'BS-VI',fuel:'Diesel',transmission:'Manual'}[f.key]; setV(f, list.includes(def) ? def : list[0]); }
+        return field(f, `<select class="input" id="s_${f.key}" data-fk="${f.key}">${options(list, getV(f), f.builtin ? '' : 'Select…')}</select>`);
+      }
+      case 'tyres': {
+        const opts = d.category==='three-wheeler' ? ['3'] : d.category==='mini-trucks' ? ['4','6'] : HOURS_CATS.includes(d.category) ? ['0'] : ['6','10','12','14','16','18','22'];
+        if (!opts.includes(String(d.tyres))) d.tyres = opts[0];
+        return field(f, `<select class="input" id="s_tyres" data-fk="tyres">${opts.map(o=>`<option value="${o}" ${String(d.tyres)===o?'selected':''}>${o==='0'?'Not applicable':o}</option>`).join('')}</select>`);
+      }
+      case 'state': return field(f, `<select class="input" id="s_state" data-fk="state">${options(STATES, d.state, 'Select state')}</select>`);
+      case 'toggle': {
+        const on = f.builtin ? !!d[f.key] : !!d.extras[f.key];
+        return `<div class="field"><label>&nbsp;</label><button type="button" class="set-row card" data-tg="${f.key}" style="height:50px;padding:0 14px"><span class="grow" style="font-weight:600">${esc(f.label)}</span><span class="toggle ${on?'on':''}"></span></button></div>`;
+      }
+      case 'checks': return `<div class="field" style="grid-column:1/-1"><label>${esc(f.label)}${f.required?REQ:''}</label><div class="checks">${f.options.map(h=>`<label><input type="checkbox" data-hl="${esc(h)}" ${d.highlights.includes(h)?'checked':''}> ${esc(h)}</label>`).join('')}</div><div class="err-msg" data-err="${f.key}" hidden></div></div>`;
+      case 'photos': return `<div style="grid-column:1/-1"><p class="muted" style="margin:0 0 12px;font-size:14px">${esc(f.label)}${f.required?REQ:''} — add up to 8 clear photos: front, side, rear, cabin and tyres. The first photo is the cover.</p>
+        <div class="photos">${d.photos.map((p,i)=>`<div class="ph"><img src="${p}" alt="Photo ${i+1}"><button type="button" data-rmph="${i}" aria-label="Remove photo">${I('x','xs')}</button>${i===0?'<span class="cover">Cover</span>':`<button type="button" data-cover="${i}" style="left:6px;right:auto;top:auto;bottom:6px;width:auto;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;height:22px">Make cover</button>`}</div>`).join('')}
+        ${d.photos.length<8?`<label class="add">${I('camera','lg')}Add photos<input type="file" accept="image/*" multiple hidden data-photos></label>`:''}</div>
+        <div data-uploading class="muted" style="font-size:13px;margin-top:8px" hidden>Processing photos…</div><div class="err-msg" data-err="photos" hidden></div></div>`;
     }
-    if (step===2){
-      const sp = spec(); const y = new Date().getFullYear();
-      const tyreOpts = d.category==='three-wheeler' ? ['3'] : d.category==='mini-trucks' ? ['4','6'] : ['tractors','construction','farm'].includes(d.category) ? [['0','Not applicable']] : ['6','10','12','14','16','18','22'];
-      if (!tyreOpts.flat().includes(String(d.tyres))) d.tyres = Array.isArray(tyreOpts[0]) ? tyreOpts[0][0] : tyreOpts[0];
-      return `<h2 style="margin:0 0 12px;font-size:18px">Vehicle details</h2>
-      <div class="grid2">${inp('year','Model year', String(y-3),'number',`inputmode="numeric" min="1990" max="${y}"`)}${inp('km', isHours()?'Hours used':'KM driven', isHours()?'e.g. 2400':'e.g. 85000','number','inputmode="numeric" min="0"')}
-      ${sel('tyres','No. of tyres', tyreOpts)}${sel('ownership','Ownership',['1st Owner','2nd Owner','3rd Owner','4th Owner or more'])}
-      ${sel('emission','Emission norm',['BS-VI','BS-IV','BS-III','Zero Emission'])}${sel('fuel','Fuel type',['Diesel','CNG','Petrol','Electric'])}
-      ${sel('transmission','Transmission',['Manual','Automatic','AMT'])}${inp('regNo','Registration number','e.g. TS 07 UF 1234','text','style="text-transform:uppercase"')}
-      ${inp('engine','Engine', sp.engine)}${inp('power','Power', sp.power)}${inp('load', d.category==='buses'?'Seating':'Load capacity', sp.load)}${inp('body','Body type', sp.body)}</div>
-      <p class="muted" style="font-size:13px;margin:0">Leave engine, power, load and body empty to use typical values for this vehicle type.</p>`;
-    }
-    if (step===3){
-      return `<h2 style="margin:0 0 4px;font-size:18px">Photos</h2><p class="muted" style="margin:0 0 14px;font-size:14px">Add up to 8 clear photos — front, side, rear, cabin and tyres. The first photo is the cover.</p>
-      <div class="photos">${d.photos.map((p,i)=>`<div class="ph"><img src="${p}" alt="Photo ${i+1}"><button data-rmph="${i}" aria-label="Remove photo">${I('x','xs')}</button>${i===0?'<span class="cover">Cover</span>':`<button data-cover="${i}" style="left:6px;right:auto;top:auto;bottom:6px;width:auto;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;height:22px">Make cover</button>`}</div>`).join('')}
-      ${d.photos.length<8?`<label class="add">${I('camera','lg')}Add photos<input type="file" accept="image/*" multiple hidden data-photos></label>`:''}</div>
-      <div data-uploading class="muted" style="font-size:13px;margin-top:8px" hidden>Processing photos…</div>
-      ${!d.photos.length?`<div class="card" style="padding:16px;margin-top:18px"><b style="display:block;margin-bottom:4px">No photos yet?</b><p class="muted" style="margin:0 0 12px;font-size:14px">We'll show an illustration of your vehicle until you add photos. Pick the closest body colour.</p>
-      <div class="swatches">${SWATCHES.map(c=>`<button data-color="${c}" class="${d.color===c?'on':''}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>
-      <div class="preview-wrap" style="margin-top:14px">${VA.scene(VA.draw(d.category, d.subtype, d.color, +d.tyres||6))}</div></div>`:''}`;
-    }
-    return `<h2 style="margin:0 0 12px;font-size:18px">Price & location</h2>
-      <div class="grid2">${inp('price','Expected price (₹)','e.g. 1250000','number','inputmode="numeric" min="10000"')}
-      <div class="field"><label>&nbsp;</label><button type="button" class="set-row card" data-neg style="height:50px;padding:0 14px"><span class="grow" style="font-weight:600">Price is negotiable</span><span class="toggle ${d.negotiable?'on':''}"></span></button></div>
-      ${inp('city','City','e.g. Khammam')}${sel('state','State',[['','Select state'],...STATES])}</div>
-      <div class="muted" style="font-size:13px;margin:-6px 0 14px" data-pricehint>${d.price?`Shown as ${inr(d.price)} (${inrShort(+d.price)})`:''}</div>
-      <div class="field"><label for="s_description">Description</label><textarea class="input" id="s_description" data-k="description" maxlength="1200" placeholder="Condition, service history, papers, reason for selling…">${esc(d.description)}</textarea></div>
-      <div class="field"><label>Highlights</label><div class="checks">${HIGHLIGHT_OPTIONS.map(h=>`<label><input type="checkbox" data-hl="${esc(h)}" ${d.highlights.includes(h)?'checked':''}> ${esc(h)}</label>`).join('')}</div></div>
-      <div class="card" style="padding:14px;display:flex;gap:14px;align-items:center;margin-top:8px"><div style="width:120px;aspect-ratio:4/3;border-radius:10px;overflow:hidden;flex:none">${d.photos[0]?`<img src="${d.photos[0]}" style="width:100%;height:100%;object-fit:cover" alt="">`:VA.scene(VA.draw(d.category,d.subtype,d.color,+d.tyres||6))}</div>
-        <div style="min-width:0"><b>${esc(d.brand)} ${esc(d.model)}</b><div class="meta">${[d.year, +d.tyres?d.tyres+' Tyres':null, d.emission].filter(Boolean).map(esc).join('<i></i>')}</div><div class="muted" style="font-size:13px">${d.category==='trucks'?esc(subById(d.subtype)?.name||''):esc(catById(d.category)?.name||'')}</div></div></div>`;
+    return '';
   }
-  function validateStep(){
+
+  function validate(){
     const err = (k, m) => { throw new ApiError(m, k); };
-    if (step===1){ if(!d.category) err('category','Choose a vehicle type'); if(d.category==='trucks'&&!d.subtype) err('subtype','Choose a truck type'); if(!d.brand) err('brand','Choose a brand'); if(!String(d.model).trim()) err('model','Enter the model name'); }
-    if (step===2){ const y=new Date().getFullYear(); if(!(+d.year>=1990&&+d.year<=y)) err('year',`Enter a year between 1990 and ${y}`); if(d.km===''||+d.km<0) err('km', isHours()?'Enter hours used':'Enter KM driven'); if(d.regNo && !/^[A-Z]{2}\s?\d{1,2}\s?[A-Z]{0,3}\s?\d{1,4}$/i.test(d.regNo.trim())) err('regNo','Use the format TS 07 UF 1234'); }
-    if (step===4){ if(!(+d.price>=10000)) err('price','Enter a price of at least ₹10,000'); if(!String(d.city).trim()) err('city','Enter the city'); if(!d.state) err('state','Choose a state'); }
+    for (const f of fieldsOn()){
+      const v = getV(f);
+      const empty = f.type==='checks' ? !d.highlights.length : f.type==='photos' ? !d.photos.length : f.type==='tyres' ? (!+d.tyres && !isHours()) : (v===''||v==null);
+      if (f.required && f.type!=='toggle' && empty) err(f.key, `${labelOf(f)} is required`);
+    }
+    const y = new Date().getFullYear();
+    if (!(+d.year>=1990 && +d.year<=y)) err('year', `Enter a year between 1990 and ${y}`);
+    if (d.km==='' || +d.km<0) err('km', isHours() ? 'Enter hours used' : 'Enter KM driven');
+    if (!(+d.price>=10000)) err('price', 'Enter a price of at least ₹10,000');
+    if (d.regNo && fieldByKey('regNo')?.enabled && !/^[A-Z]{2}\s?\d{1,2}\s?[A-Z]{0,3}\s?\d{1,4}$/i.test(d.regNo.trim())) err('regNo', 'Use the format TS 07 UF 1234');
   }
+
   return { nav:'sell', html: `${topbar({back: editing?'#/v/'+editing.id:'#/', title: editing?'Edit listing':'Sell your vehicle', sub: editing?editing.id:'Reach thousands of verified buyers'})}
-  <div class="wrap page" style="max-width:820px"><div class="stepper" data-stepper></div><div class="card panel" data-step></div>
-    <div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-ghost" data-prev style="flex:1">Back</button><button class="btn btn-primary" data-next style="flex:2">Continue</button></div></div>`,
+  <div class="wrap page" style="max-width:820px"><div data-step></div><div data-foot></div></div>`,
   mount(root){
-    const box = $('[data-step]',root);
+    const box = $('[data-step]',root), foot = $('[data-foot]',root);
     const draw = () => {
-      $('[data-stepper]',root).innerHTML = STEPS.map((s,i)=>`<div class="${i<step?'on':''}"><div class="bar"></div><small>${s}</small></div>`).join('');
-      box.innerHTML = stepHtml();
-      $('[data-prev]',root).style.visibility = step===1?'hidden':'visible';
-      $('[data-next]',root).innerHTML = step===4 ? (editing?`${I('check')} Save changes`:`${I('check')} Publish listing`) : 'Continue';
+      if (step === 1){
+        box.innerHTML = `<h2 style="margin:0 0 12px;font-size:20px">What are you selling?</h2><div class="pick-grid">${CATS.map(c=>`<button class="pick ${d.category===c.id?'on':''}" data-cat="${c.id}">${catArt(c.id, c.id==='trucks'?'lorries':null, c.id==='trucks'?'#1D4ED8':c.color)}${esc(c.name)}</button>`).join('')}</div>`;
+        foot.innerHTML = '';
+        $$('[data-cat]',box).forEach(b => b.onclick = () => { if (d.category !== b.dataset.cat){ d.category = b.dataset.cat; d.subtype = ''; d.brand = ''; d.tyres = ''; } saveDraft(); step = 2; draw(); scrollTo(0,0); });
+        return;
+      }
+      const cat = catById(d.category);
+      const sections = FORM_GROUPS.map(g => { const html = fieldsOn().filter(f=>f.group===g).map(fieldHtml).join(''); return html.trim() ? `<div class="card panel" style="margin-bottom:14px"><h2 style="margin:0 0 12px;font-size:18px">${FORM_TITLES[g]}</h2><div class="grid2">${html}</div></div>` : ''; }).join('');
+      box.innerHTML = `<div class="card panel" style="margin-bottom:14px;display:flex;align-items:center;gap:14px;padding:12px 16px"><div style="width:84px;flex:none">${catArt(cat.id, cat.id==='trucks'?(d.subtype||'lorries'):null, cat.id==='trucks'?'#1D4ED8':cat.color)}</div><div class="grow"><small class="muted">Selling</small><div><b style="font-size:17px">${esc(cat.name)}</b></div></div>${editing?'':'<button type="button" class="link" data-change>Change</button>'}</div>${sections}`;
+      foot.innerHTML = `<div style="display:flex;gap:10px;margin-top:6px"><button class="btn btn-ghost" data-prev style="flex:1">Back</button><button class="btn btn-primary" data-next style="flex:2">${editing?`${I('check')} Save changes`:`${I('check')} Publish listing`}</button></div>`;
       bind();
     };
     const bind = () => {
-      $$('[data-k]',box).forEach(i=>i.addEventListener('input',()=>{ d[i.dataset.k] = i.value; const e=$(`[data-err="${i.dataset.k}"]`,box); if(e) e.hidden=true; i.classList.remove('err');
-        if(i.dataset.k==='price'){ const h=$('[data-pricehint]',box); if(h) h.textContent = +i.value?`Shown as ${inr(+i.value)} (${inrShort(+i.value)})`:''; } saveDraft(); }));
-      $$('[data-cat]',box).forEach(b=>b.onclick=()=>{ if(d.category!==b.dataset.cat){ d.category=b.dataset.cat; d.subtype=''; d.brand=''; } saveDraft(); draw(); });
-      $$('[data-sub]',box).forEach(b=>b.onclick=()=>{ d.subtype=b.dataset.sub; d.brand=''; saveDraft(); draw(); });
-      $$('[data-brand]',box).forEach(b=>b.onclick=()=>{ d.brand=b.dataset.brand; saveDraft(); draw(); $('#s_model',box)?.focus(); });
-      $$('[data-color]',box).forEach(b=>b.onclick=()=>{ d.color=b.dataset.color; saveDraft(); draw(); });
-      $$('[data-rmph]',box).forEach(b=>b.onclick=()=>{ d.photos.splice(+b.dataset.rmph,1); draw(); });
-      $$('[data-cover]',box).forEach(b=>b.onclick=()=>{ const [p]=d.photos.splice(+b.dataset.cover,1); d.photos.unshift(p); draw(); });
-      const ph=$('[data-photos]',box); if(ph) ph.onchange = async e => { $('[data-uploading]',box).hidden=false;
+      $$('[data-fk]',box).forEach(i => {
+        const f = fieldByKey(i.dataset.fk);
+        i.addEventListener(i.tagName==='SELECT' ? 'change' : 'input', () => {
+          setV(f, i.value); const e = $(`[data-err="${f.key}"]`,box); if (e) e.hidden = true; i.classList.remove('err');
+          if (f.key==='price'){ const h=$('[data-pricehint]',box); if(h) h.textContent = +i.value ? `Shown as ${inr(+i.value)} (${inrShort(+i.value)})` : ''; }
+          saveDraft();
+          if (f.key==='subtype'){ d.brand = ''; d.tyres = ''; draw(); }
+          if (f.key==='brand') draw();
+        });
+      });
+      $$('[data-tg]',box).forEach(b => b.onclick = () => { const f = fieldByKey(b.dataset.tg); const on = !getV(f); setV(f, on); $('.toggle',b).classList.toggle('on', on); saveDraft(); });
+      $$('[data-hl]',box).forEach(c => c.onchange = () => { const s = new Set(d.highlights); c.checked ? s.add(c.dataset.hl) : s.delete(c.dataset.hl); d.highlights = [...s]; saveDraft(); });
+      $$('[data-rmph]',box).forEach(b => b.onclick = () => { d.photos.splice(+b.dataset.rmph,1); draw(); });
+      $$('[data-cover]',box).forEach(b => b.onclick = () => { const [p] = d.photos.splice(+b.dataset.cover,1); d.photos.unshift(p); draw(); });
+      const ph = $('[data-photos]',box); if (ph) ph.onchange = async e => { $('[data-uploading]',box).hidden = false;
         for (const f of [...e.target.files].slice(0, 8-d.photos.length)) { try { d.photos.push(await compressImage(f, 1000, .7)); } catch(er){ toast(er.message,'bad'); } } draw(); };
-      const ng=$('[data-neg]',box); if(ng) ng.onclick=()=>{ d.negotiable=!d.negotiable; $('.toggle',ng).classList.toggle('on',d.negotiable); };
-      $$('[data-hl]',box).forEach(c=>c.onchange=()=>{ const s=new Set(d.highlights); c.checked?s.add(c.dataset.hl):s.delete(c.dataset.hl); d.highlights=[...s]; });
+      const ch = $('[data-change]',box); if (ch) ch.onclick = () => { step = 1; draw(); scrollTo(0,0); };
     };
-    const showErr = e => { const el=$(`[data-err="${e.field}"]`,box); if(el){ el.textContent=e.message; el.hidden=false; } const i=$(`[data-k="${e.field}"]`,box); if(i){ i.classList.add('err'); i.focus(); } else toast(e.message,'bad'); };
-    $('[data-prev]',root).onclick=()=>{ step=Math.max(1,step-1); draw(); scrollTo(0,0); };
-    $('[data-next]',root).onclick=async ()=>{
-      try { validateStep(); } catch(e){ return showErr(e); }
-      if (step<4){ step++; draw(); scrollTo(0,0); return; }
-      const btn=$('[data-next]',root); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…';
+    const showErr = e => { const el = $(`[data-err="${e.field}"]`,box); if (el){ el.textContent = e.message; el.hidden = false; el.scrollIntoView({block:'center', behavior:'smooth'}); } const i = $(`[data-fk="${e.field}"]`,box); if (i){ i.classList.add('err'); i.focus({preventScroll:true}); } if (!el) toast(e.message,'bad'); };
+    foot.onclick = async e => {
+      if (e.target.closest('[data-prev]')){ if (editing) go('#/v/'+editing.id); else { step = 1; draw(); scrollTo(0,0); } return; }
+      const btn = e.target.closest('[data-next]'); if (!btn) return;
+      try { validate(); } catch(er){ return showErr(er); }
+      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Saving…';
       try {
         const l = editing ? await API.listings.update(editing.id, d) : await API.listings.create(d);
-        if (!editing) try{ localStorage.removeItem(DKEY); }catch(e){}
-        toast(editing?'Changes saved':'Listing published'); App.refreshBadges(); go('#/v/'+l.id);
-      } catch(e){ btn.disabled=false; draw(); if(e.field){ step = ['category','subtype','brand','model'].includes(e.field)?1:['year','km'].includes(e.field)?2:4; draw(); showErr(e);} else toast(e.message,'bad'); }
+        if (!editing) try { localStorage.removeItem(DKEY); } catch(er){}
+        toast(editing ? 'Changes saved' : 'Listing published'); App.refreshBadges(); go('#/v/'+l.id);
+      } catch(er){ draw(); if (er.field) showErr(er); else toast(er.message,'bad'); }
     };
     draw();
   }};
@@ -1970,11 +1817,11 @@ Views.profile = ({tab='listings'}) => {
   const tabs = [['listings','My listings',mine.length],['favorites','Saved',favs.length],['finance','Finance requests',fin.length],['settings','Settings',null]];
   let body = '';
   if (tab==='listings') body = mine.length ? mine.map(l=>`<div class="card my-row"><a class="thumb" href="#/v/${l.id}">${cover(l)}</a><div class="mid"><h4>${esc(l.title)}</h4><div class="price" style="font-size:16px">${inr(l.price)}</div>
-      <div class="muted" style="font-size:12.5px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="status ${l.status}">${l.status==='sold'?'Sold':'Active'}</span>${I('eye','xs')} ${l.views||0} views · ${esc(l.id)} · ${ago(l.createdAt)}</div></div>
-      <div class="acts"><a href="#/sell/${l.id}" class="btn btn-ghost btn-sm">${I('edit','xs')} Edit</a><button class="btn btn-ghost btn-sm" data-toggle="${l.id}">${l.status==='sold'?'Mark available':'Mark sold'}</button><button class="btn btn-ghost btn-sm" data-del="${l.id}" aria-label="Delete">${I('trash','xs')}</button></div></div>`).join('')
+      <div class="muted" style="font-size:12.5px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span class="status ${l.status}">${l.status==='sold'?'Sold':l.status==='removed'?'Removed by admin':'Active'}</span>${I('eye','xs')} ${l.views||0} views · ${esc(l.id)} · ${ago(l.createdAt)}</div></div>
+      <div class="acts">${l.status==='removed'?'':`<a href="#/sell/${l.id}" class="btn btn-ghost btn-sm">${I('edit','xs')} Edit</a><button class="btn btn-ghost btn-sm" data-toggle="${l.id}">${l.status==='sold'?'Mark available':'Mark sold'}</button>`}<button class="btn btn-ghost btn-sm" data-del="${l.id}" aria-label="Delete">${I('trash','xs')}</button></div></div>`).join('')
     : emptyState('tag','You have not listed any vehicles','List your truck, tractor or bus in a few minutes and chat with buyers privately.', `<a href="#/sell" class="btn btn-primary">${I('plus','sm')} Sell your vehicle</a>`);
   if (tab==='favorites') body = favs.length ? `<div class="lgrid">${favs.map(lcard).join('')}</div>` : emptyState('heart','No saved vehicles','Tap the heart on any vehicle to save it here.', `<a href="#/buy" class="btn btn-primary">Browse vehicles</a>`);
-  if (tab==='finance') body = fin.length ? fin.map(r=>{ const l=API.listings.get(r.listingId); return `<div class="card my-row">${l?`<a class="thumb" href="#/v/${l.id}">${cover(l)}</a>`:''}<div class="mid"><h4>${esc(l?l.title:'Vehicle removed')}</h4><div class="muted" style="font-size:13px">${esc(r.name)} · ${esc(r.mobile)} · ${esc(r.city)}, ${esc(r.state)}</div><div class="muted" style="font-size:12.5px;margin-top:4px">Submitted ${ago(r.createdAt)}</div></div><div class="acts"><span class="status ${r.status}">${r.status==='new'?'Received':'Offers ready'}</span></div></div>`; }).join('')
+  if (tab==='finance') body = fin.length ? fin.map(r=>{ const l=API.listings.get(r.listingId); return `<div class="card my-row">${l?`<a class="thumb" href="#/v/${l.id}">${cover(l)}</a>`:''}<div class="mid"><h4>${esc(l?l.title:'Vehicle removed')}</h4><div class="muted" style="font-size:13px">${esc(r.name)} · ${esc(r.mobile)} · ${esc(r.city)}, ${esc(r.state)}</div><div class="muted" style="font-size:12.5px;margin-top:4px">Submitted ${ago(r.createdAt)}</div></div><div class="acts"><span class="status ${r.status}">${r.status==='new'?'Received':r.status==='contacted'?'Team in touch':'Completed'}</span></div></div>`; }).join('')
     : emptyState('bank','No finance requests','Open any vehicle and tap “Check finance options” to get loan offers.', `<a href="#/buy" class="btn btn-primary">Browse vehicles</a>`);
   if (tab==='settings'){
     const dark = document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches);
@@ -1988,9 +1835,8 @@ Views.profile = ({tab='listings'}) => {
       <button class="btn btn-primary">Save profile</button></form>
     <div class="card" style="margin-top:14px;overflow:hidden">
       <button class="set-row" data-theme-toggle><span class="s-ic">${I(dark?'moon':'sun')}</span><span class="grow"><b>Dark mode</b><small>Easier on the eyes at night</small></span><span class="toggle ${dark?'on':''}"></span></button>
-      <button class="set-row" data-pw><span class="s-ic">${I('lock')}</span><span class="grow"><b>Change password</b><small>Use at least 6 characters</small></span>${I('right','sm')}</button>
-      <button class="set-row" data-export><span class="s-ic">${I('doc')}</span><span class="grow"><b>Download my data</b><small>Your listings, chats and requests as a JSON file · ${DB.sizeKB()} KB stored</small></span>${I('right','sm')}</button>
-      <button class="set-row" data-reset><span class="s-ic">${I('refresh')}</span><span class="grow"><b>Reset demo data</b><small>Restore the original listings and clear everything on this device</small></span>${I('right','sm')}</button>
+      <button class="set-row" data-pw><span class="s-ic">${I('lock')}</span><span class="grow"><b>Change password</b><small>Use at least 8 characters</small></span>${I('right','sm')}</button>
+      <button class="set-row" data-export><span class="s-ic">${I('doc')}</span><span class="grow"><b>Download my data</b><small>Your listings, chats and requests as a JSON file</small></span>${I('right','sm')}</button>
       <button class="set-row" data-logout><span class="s-ic">${I('logout')}</span><span class="grow"><b>Log out</b></span>${I('right','sm')}</button></div>`;
   }
   const unreadMsgs = API.chats.unreadTotal();
@@ -2002,20 +1848,19 @@ Views.profile = ({tab='listings'}) => {
     ${body}
   </div>`,
   mount(root){
-    $$('[data-toggle]',root).forEach(b=>b.onclick=async()=>{ const l=API.listings.get(b.dataset.toggle); await API.listings.setStatus(l.id, l.status==='sold'?'active':'sold'); toast(l.status==='sold'?'Marked as available':'Marked as sold'); App.render(); });
-    $$('[data-del]',root).forEach(b=>b.onclick=async()=>{ if(await confirmSheet({title:'Delete this listing?', body:'Buyers will no longer see it. This cannot be undone.', ok:'Delete'})){ await API.listings.remove(b.dataset.del); toast('Listing deleted'); App.render(); } });
+    $$('[data-toggle]',root).forEach(b=>b.onclick=async()=>{ const l=API.listings.get(b.dataset.toggle); try { const was=l.status; await API.listings.setStatus(l.id, was==='sold'?'active':'sold'); toast(was==='sold'?'Marked as available':'Marked as sold'); App.render(); } catch(e){ toast(e.message,'bad'); } });
+    $$('[data-del]',root).forEach(b=>b.onclick=async()=>{ if(await confirmSheet({title:'Delete this listing?', body:'Buyers will no longer see it. This cannot be undone.', ok:'Delete'})){ try { await API.listings.remove(b.dataset.del); toast('Listing deleted'); App.render(); } catch(e){ toast(e.message,'bad'); } } });
     const pf=$('[data-pform]',root); if(pf){
       pf.phone.addEventListener('input',()=>pf.phone.value=pf.phone.value.replace(/\D/g,''));
       pf.onsubmit=async e=>{ e.preventDefault(); $$('[data-err]',pf).forEach(x=>x.hidden=true);
         try{ await API.auth.update(Object.fromEntries(new FormData(pf))); toast('Profile saved'); App.render(); } catch(er){ const el=$(`[data-err="${er.field}"]`,pf); if(el){el.textContent=er.message; el.hidden=false;} else toast(er.message,'bad'); } };
-      $('[data-theme-toggle]',root).onclick=()=>{ const cur = document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches); const t=cur?'light':'dark'; document.documentElement.dataset.theme=t; try{localStorage.setItem('spidy_theme',t);}catch(er){} App.render(); };
+      $('[data-theme-toggle]',root).onclick=()=>{ const cur = document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches); const t=cur?'light':'dark'; document.documentElement.dataset.theme=t; try{localStorage.setItem('autoreboot_theme',t);}catch(er){} App.render(); };
       $('[data-pw]',root).onclick=()=>openSheet(`<h3>Change password</h3><form data-pwf novalidate><div class="field"><label for="pw_o">Current password</label><input class="input" id="pw_o" type="password" name="old" autocomplete="current-password"><div class="err-msg" data-err="old" hidden></div></div><div class="field"><label for="pw_n">New password</label><input class="input" id="pw_n" type="password" name="new" autocomplete="new-password"><div class="err-msg" data-err="new" hidden></div></div><button class="btn btn-primary btn-block">Update password</button></form>`,
         (el,close)=>{ const f=$('[data-pwf]',el); f.onsubmit=async e=>{ e.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true); try{ await API.auth.changePassword(f.old.value, f.new.value); close(); toast('Password updated'); } catch(er){ const m=$(`[data-err="${er.field}"]`,f); if(m){m.textContent=er.message;m.hidden=false;} } }; });
       $('[data-export]',root).onclick=()=>{ const me2=API.meId(); const data={profile:API.auth.me(), listings:API.listings.querySync({sellerId:me2,status:'any'}).map(l=>({...l,photos:l.photos.length+' photos'})), favorites:API.favs.ids(), chats:API.chats.mine().map(c=>({...c, messages:API.chats.messages(c.id).map(m=>({from:m.senderId===me2?'me':'them', text:m.text, at:new Date(m.createdAt).toISOString()}))})), financeRequests:API.finance.mine()};
         const json = JSON.stringify(data,null,2);
         openSheet(`<h3>Your data</h3><p class="muted" style="margin:0 0 10px">Copy this JSON to keep a backup.</p><textarea class="input" style="min-height:260px;font-size:12px" readonly>${esc(json)}</textarea><div class="sheet-foot"><button class="btn btn-primary btn-block" data-copy>Copy to clipboard</button></div>`,(el)=>{ $('[data-copy]',el).onclick=async()=>{ try{ await navigator.clipboard.writeText(json); toast('Copied'); }catch(e){ $('textarea',el).select(); toast('Press Ctrl+C to copy'); } }; }); };
-      $('[data-reset]',root).onclick=async()=>{ if(await confirmSheet({title:'Reset all demo data?', body:'All accounts, listings, chats and requests on this device will be replaced with the original demo data.', ok:'Reset'})){ DB.reset(); await seed(); toast('Demo data restored'); go('#/login'); } };
-      $('[data-logout]',root).onclick=()=>{ API.auth.logout(); toast('Logged out'); go('#/'); };
+      $('[data-logout]',root).onclick=async()=>{ await API.auth.logout(); toast('Logged out'); go('#/'); };
     }
   }};
 };
@@ -2028,30 +1873,40 @@ Views.notifications = () => {
 };
 
 /* ---- auth ---- */
-Views.auth = (_, q, mode='login') => {
-  const next = q.get('next') || '#/';
+let _gsi;
+const loadGoogle = () => _gsi || (_gsi = new Promise((res, rej) => {
+  if (window.google && google.accounts && google.accounts.id) return res();
+  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+  s.onload = res; s.onerror = () => { _gsi = null; rej(new Error('Google script blocked')); }; document.head.appendChild(s);
+}));
+
+Views.auth = (_, q, mode='login', role='user') => {
+  const isOwner = role==='owner';
+  const next = q.get('next') || (isOwner ? '#/owner' : '#/');
   const authScene = `<svg class="scene" viewBox="0 0 600 300" preserveAspectRatio="xMidYMax slice" aria-hidden="true"><rect y="230" width="600" height="70" fill="#1B2A55"/><rect y="228" width="600" height="3" fill="#2E4382"/>
     <g fill="#ECEFF3" opacity=".5">${[20,120,220,320,420,520].map(x=>`<rect x="${x}" y="270" width="50" height="4" rx="2"/>`).join('')}</g>
     <g transform="translate(-10 120) scale(1.05)">${VA.draw('trucks','tippers','#E9B21C',10)}</g><g transform="translate(250 112) scale(1.15)">${VA.draw('trucks','lorries','#E5194D',10)}</g></svg>`;
   return { bare:true, html: `<div class="auth">
-    <div class="auth-art"><a href="#/" class="brand-mark" style="position:relative"><span class="logo">${I('truck','sm')}</span>Spidy</a>
-      <h2>${mode==='login'?'Welcome back to the yard.':'Buy and sell commercial vehicles with confidence.'}</h2><p>Trucks, tippers, tractors, buses and machines from verified sellers across India — with private chat and finance help built in.</p>${authScene}</div>
+    <div class="auth-art"><a href="#/" class="brand-mark" style="position:relative"><span class="logo">${I('truck','sm')}</span>Autoreboot</a>
+      <h2>${isOwner?'Run the marketplace.':mode==='login'?'Welcome back to the yard.':'Buy and sell commercial vehicles with confidence.'}</h2><p>${isOwner?'Review listings, manage members and follow up on finance requests from the owner console.':'Trucks, tippers, tractors, buses and machines from verified sellers across India — with private chat and finance help built in.'}</p>${authScene}</div>
     <div class="auth-card">
       <a href="#/" class="link" style="color:var(--ink-2)">${I('back','xs')} Continue browsing</a>
-      <h1>${mode==='login'?'Log in':'Create your account'}</h1><p class="muted" style="margin:0">${mode==='login'?'Chat with sellers, save vehicles and request finance.':'It takes less than a minute.'}</p>
-      <div class="tabs" role="tablist"><button class="${mode==='login'?'on':''}" data-mode="login" role="tab">Log in</button><button class="${mode==='signup'?'on':''}" data-mode="signup" role="tab">Sign up</button></div>
+      <h1>${isOwner?'Owner sign in':mode==='login'?'Log in':'Create your account'}</h1><p class="muted" style="margin:0">${isOwner?'Restricted to the marketplace owner.':mode==='login'?'Chat with sellers, save vehicles and request finance.':'It takes less than a minute.'}</p>
+      ${isOwner?'':`<div class="tabs" role="tablist"><button class="${mode==='login'?'on':''}" data-mode="login" role="tab">Log in</button><button class="${mode==='signup'?'on':''}" data-mode="signup" role="tab">Sign up</button></div>`}
+      ${!isOwner && Store.googleClientId ? `<div data-google style="display:flex;justify-content:center;min-height:44px"></div><div class="or">or use email</div>` : ''}
       <form data-auth novalidate>
-        ${mode==='signup'?`<div class="field"><label for="a_name">Full name</label><input class="input" id="a_name" name="name" autocomplete="name" placeholder="e.g. Ravi Kumar"><div class="err-msg" data-err="name" hidden></div></div>
+        ${mode==='signup'&&!isOwner?`<div class="field"><label for="a_name">Full name</label><input class="input" id="a_name" name="name" autocomplete="name" placeholder="e.g. Ravi Kumar"><div class="err-msg" data-err="name" hidden></div></div>
           <div class="field"><label for="a_email">Email</label><input class="input" id="a_email" name="email" type="email" autocomplete="email" placeholder="you@example.com"><div class="err-msg" data-err="email" hidden></div></div>
           <div class="field"><label for="a_phone">Mobile number</label><input class="input" id="a_phone" name="phone" inputmode="numeric" maxlength="10" autocomplete="tel" placeholder="10 digit mobile number"><div class="err-msg" data-err="phone" hidden></div></div>
           <div class="grid2"><div class="field"><label for="a_city">City</label><input class="input" id="a_city" name="city" placeholder="Optional"></div><div class="field"><label for="a_state">State</label><select class="input" id="a_state" name="state"><option value="">Optional</option>${STATES.map(s=>`<option>${s}</option>`).join('')}</select></div></div>`
-        :`<div class="field"><label for="a_id">Email or mobile number</label><input class="input" id="a_id" name="id" autocomplete="username" placeholder="you@example.com or 98XXXXXXXX"><div class="err-msg" data-err="id" hidden></div></div>`}
-        <div class="field"><label for="a_pw">Password</label><div class="pw-wrap"><input class="input" id="a_pw" name="password" type="password" autocomplete="${mode==='login'?'current-password':'new-password'}" placeholder="${mode==='login'?'Your password':'At least 6 characters'}"><button type="button" data-eye aria-label="Show password">${I('eye','sm')}</button></div><div class="err-msg" data-err="password" hidden></div></div>
-        <button class="btn btn-primary btn-block" data-submit>${mode==='login'?'Log in':'Create account'}</button>
+        :`<div class="field"><label for="a_id">${isOwner?'Owner email':'Email or mobile number'}</label><input class="input" id="a_id" name="id" autocomplete="username" placeholder="${isOwner?'owner@example.com':'you@example.com or 98XXXXXXXX'}"><div class="err-msg" data-err="id" hidden></div></div>`}
+        <div class="field"><label for="a_pw">Password</label><div class="pw-wrap"><input class="input" id="a_pw" name="password" type="password" autocomplete="${mode==='login'?'current-password':'new-password'}" placeholder="${mode==='login'?'Your password':'At least 8 characters'}"><button type="button" data-eye aria-label="Show password">${I('eye','sm')}</button></div><div class="err-msg" data-err="password" hidden></div></div>
+        <button class="btn btn-primary btn-block" data-submit>${isOwner?'Sign in as owner':mode==='login'?'Log in':'Create account'}</button>
       </form>
-      <div class="or">or</div>
+      ${isOwner ? `<p class="muted" style="font-size:13px;text-align:center;margin-top:14px">Owner accounts are created by the site administrator.</p>`
+        : Store.demo ? `<div class="or">or</div>
       <button class="btn btn-outline btn-block" data-demo>${I('user','sm')} Try the demo account</button>
-      <p class="muted" style="font-size:13px;text-align:center;margin-top:10px">Demo: demo@spidy.in · demo1234</p>
+      <p class="muted" style="font-size:13px;text-align:center;margin-top:10px">Demo: demo@autoreboot.in · demo1234</p>` : ''}
     </div></div>`,
   mount(root){
     $$('[data-mode]',root).forEach(b=>b.onclick=()=>go(`#/${b.dataset.mode}${next!=='#/'?'?next='+encodeURIComponent(next):''}`));
@@ -2059,14 +1914,220 @@ Views.auth = (_, q, mode='login') => {
     const ph=$('#a_phone',root); if(ph) ph.addEventListener('input',()=>ph.value=ph.value.replace(/\D/g,''));
     const form=$('[data-auth]',root);
     $$('input',form).forEach(i=>i.addEventListener('input',()=>{ i.classList.remove('err'); const e=$(`[data-err="${i.name}"]`,form); if(e) e.hidden=true; }));
-    const done = u => { toast(`Welcome, ${u.name.split(' ')[0]}`); App.refreshBadges(); go(next.startsWith('#/login')||next.startsWith('#/signup') ? '#/' : next); };
+    const done = u => { toast(`Welcome, ${u.name.split(' ')[0]}`); App.refreshBadges(); go(u.role==='owner' ? '#/owner' : next.startsWith('#/login')||next.startsWith('#/signup') ? '#/' : next); };
     form.onsubmit = async e => {
       e.preventDefault(); const btn=$('[data-submit]',form); const label=btn.textContent; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
-      try { const data=Object.fromEntries(new FormData(form)); done(mode==='login' ? await API.auth.login(data) : await API.auth.register(data)); }
+      try { const data=Object.fromEntries(new FormData(form)); done(mode==='login' ? await API.auth.login({...data, as: role}) : await API.auth.register(data)); }
       catch(er){ btn.disabled=false; btn.textContent=label; const el=$(`[data-err="${er.field}"]`,form); if(el){ el.textContent=er.message; el.hidden=false; form[er.field]?.classList.add('err'); form[er.field]?.focus(); } else toast(er.message,'bad'); }
     };
-    $('[data-demo]',root).onclick = async e => { e.currentTarget.disabled=true; try { done(await API.auth.demo()); } catch(er){ toast(er.message,'bad'); e.currentTarget.disabled=false; } };
-    $(mode==='login'?'#a_id':'#a_name',root).focus();
+    const gbox = $('[data-google]',root);
+    if (gbox) loadGoogle().then(() => {
+      google.accounts.id.initialize({client_id:Store.googleClientId, callback: async r => { try { done(await API.auth.google(r.credential)); } catch(er){ toast(er.message,'bad'); } }});
+      google.accounts.id.renderButton(gbox, {theme:'outline', size:'large', shape:'pill', width:Math.min(380, gbox.clientWidth || 340), text: mode==='signup' ? 'signup_with' : 'continue_with', logo_alignment:'left'});
+    }).catch(() => { gbox.innerHTML = '<span class="muted" style="font-size:13px">Google sign-in is unavailable right now.</span>'; });
+    const demoBtn = $('[data-demo]',root); if (demoBtn) demoBtn.onclick = async e => { e.currentTarget.disabled=true; try { done(await API.auth.demo()); } catch(er){ toast(er.message,'bad'); e.currentTarget.disabled=false; } };
+    $(mode==='login'||isOwner?'#a_id':'#a_name',root).focus();
+  }};
+};
+/* ---- owner console ---- */
+Views.owner = ({tab='overview'}) => {
+  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests'],['banners','Banners'],['form','Sell form']];
+  const me = API.auth.me();
+  return { nav:'owner', html: `${topbar({title:'Owner dashboard', sub:`Signed in as ${me.email}`, right:`<button class="btn btn-ghost btn-sm" data-ologout>${I('logout','xs')} Log out</button>`})}
+    <div class="wrap page"><div class="ptabs">${TABS.map(([k,n])=>`<a class="chip ${tab===k?'on':''}" href="#/owner/${k}">${n}</a>`).join('')}</div>
+    <div data-obody><p class="muted" style="text-align:center;padding:40px 0">Loading…</p></div></div>`,
+  mount(root){
+    $('[data-ologout]',root).onclick = async () => { await API.auth.logout(); toast('Logged out'); go('#/owner/login'); };
+    const body = $('[data-obody]',root);
+    const fail = e => { body.innerHTML = emptyState('info','Could not load this page', e.message, `<button class="btn btn-primary" data-retry>Try again</button>`); $('[data-retry]',body).onclick = () => App.render(); };
+    const act = async (fn, msg) => { try { await fn(); toast(msg); return true; } catch(e){ toast(e.message,'bad'); return false; } };
+    const toolbar = (ph, extra='') => `<div class="otools"><input class="input" type="search" data-q placeholder="${ph}" aria-label="${ph}">${extra}</div>`;
+    const debounce = (fn, ms=250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+    if (tab === 'overview') API.owner.overview().then(o => {
+      body.innerHTML = `<div class="ogrid">${[
+        ['Users', o.users, `+${o.newUsers7d} this week${o.suspended?` · ${o.suspended} suspended`:''}`],
+        ['Active listings', o.listingsActive, `${o.listingsSold} sold · ${o.listingsRemoved} removed`],
+        ['New finance requests', o.financeNew, `${o.financeTotal} total`],
+        ['Conversations', o.chats, `${o.messages} messages`],
+        ['Inventory value', inrShort(o.inventoryValue), 'across active listings'],
+      ].map(([k,v,s])=>`<div class="card ostat"><small>${k}</small><b>${v}</b><span>${s}</span></div>`).join('')}</div>
+      <div class="ocols">
+        <div class="card panel"><h3>Newest users</h3>${o.recentUsers.map(u=>`<div class="orow">${avatar(u)}<div class="grow"><b>${esc(u.name)}</b><small>${esc(u.email)} · ${ago(u.createdAt)}</small></div></div>`).join('') || '<p class="muted" style="margin:0">No users yet.</p>'}</div>
+        <div class="card panel"><h3>Newest listings</h3>${o.recentListings.map(l=>`<a class="orow" href="#/v/${esc(l.id)}"><div class="grow"><b>${esc(l.title)}</b><small>${esc(l.seller)} · ${inr(l.price)} · ${ago(l.createdAt)}</small></div><span class="status ${l.status}">${l.status}</span></a>`).join('') || '<p class="muted" style="margin:0">No listings yet.</p>'}</div>
+      </div>`;
+    }).catch(fail);
+
+    if (tab === 'users'){
+      body.innerHTML = toolbar('Search by name, email or mobile') + '<div data-list></div>';
+      const list = $('[data-list]',body); let rows = [];
+      const draw = () => { list.innerHTML = rows.length ? rows.map(u => `<div class="card my-row" data-uid="${esc(u.id)}">${avatar(u)}<div class="mid">
+        <h4>${esc(u.name)} ${u.verified?`<span class="verified">${I('shieldCheck','xs')}</span>`:''} <span class="status ${u.status==='suspended'?'removed':'active'}">${u.status==='suspended'?'Suspended':'Active'}</span></h4>
+        <div class="muted" style="font-size:13px">${esc(u.email)} · ${esc(u.phone)} · ${esc([u.city,u.state].filter(Boolean).join(', ') || 'No location')}</div>
+        <div class="muted" style="font-size:12.5px">${u.listingCount} listing${u.listingCount===1?'':'s'} · joined ${monthYear(u.createdAt)}${u.lastLogin?` · last login ${ago(u.lastLogin)}`:' · never signed in'}</div></div>
+        <div class="acts"><button class="btn btn-ghost btn-sm" data-a="verify">${u.verified?'Remove badge':'Verify'}</button><button class="btn btn-ghost btn-sm" data-a="suspend">${u.status==='suspended'?'Reactivate':'Suspend'}</button><button class="btn btn-ghost btn-sm" data-a="delete" aria-label="Delete user">${I('trash','xs')}</button></div></div>`).join('')
+        : emptyState('user','No users found','Try a different search.'); };
+      const load = () => API.owner.users($('[data-q]',body).value.trim()).then(r => { rows = r; draw(); }).catch(fail);
+      $('[data-q]',body).oninput = debounce(load); load();
+      list.onclick = async e => {
+        const b = e.target.closest('[data-a]'); if (!b) return; const u = rows.find(x => x.id === b.closest('[data-uid]').dataset.uid); if (!u) return;
+        if (b.dataset.a === 'verify' && await act(() => API.owner.patchUser(u.id, {verified:!u.verified}), u.verified ? 'Badge removed' : 'User verified')) load();
+        if (b.dataset.a === 'suspend'){
+          const suspending = u.status !== 'suspended';
+          if (suspending && !await confirmSheet({title:`Suspend ${u.name}?`, body:'They will be signed out and unable to log in. Their listings are hidden from buyers.', ok:'Suspend'})) return;
+          if (await act(() => API.owner.patchUser(u.id, {status: suspending ? 'suspended' : 'active'}), suspending ? 'User suspended' : 'User reactivated')) load();
+        }
+        if (b.dataset.a === 'delete' && await confirmSheet({title:`Delete ${u.name}?`, body:'This permanently deletes the account, their listings, chats and requests. It cannot be undone.', ok:'Delete'})
+          && await act(() => API.owner.deleteUser(u.id), 'User deleted')) load();
+      };
+    }
+
+    if (tab === 'listings'){
+      let status = '';
+      body.innerHTML = toolbar('Search by title, ID, seller or city') + `<div class="ptabs" style="margin-top:0">${[['','All'],['active','Active'],['sold','Sold'],['removed','Removed']].map(([k,n])=>`<button class="chip ${k===''?'on':''}" data-st="${k}">${n}</button>`).join('')}</div><div data-list></div>`;
+      const list = $('[data-list]',body); let rows = [];
+      const draw = () => { list.innerHTML = rows.length ? rows.map(l => `<div class="card my-row" data-lid="${esc(l.id)}"><div class="mid">
+        <h4><a href="#/v/${esc(l.id)}">${esc(l.title)}</a> <span class="status ${l.status}">${l.status}</span></h4>
+        <div class="price" style="font-size:15px">${inr(l.price)}</div>
+        <div class="muted" style="font-size:12.5px">${esc(l.id)} · ${esc(l.sellerName)} · ${esc(l.city)}, ${esc(l.state)} · ${l.views} views · ${ago(l.createdAt)}</div></div>
+        <div class="acts"><button class="btn btn-ghost btn-sm" data-a="toggle">${l.status==='removed'?'Restore':'Remove'}</button><button class="btn btn-ghost btn-sm" data-a="delete" aria-label="Delete listing">${I('trash','xs')}</button></div></div>`).join('')
+        : emptyState('tag','No listings found','Try a different search or filter.'); };
+      const load = () => API.owner.listings($('[data-q]',body).value.trim(), status).then(r => { rows = r; draw(); }).catch(fail);
+      $('[data-q]',body).oninput = debounce(load); load();
+      $$('[data-st]',body).forEach(c => c.onclick = () => { status = c.dataset.st; $$('[data-st]',body).forEach(x => x.classList.toggle('on', x === c)); load(); });
+      list.onclick = async e => {
+        const b = e.target.closest('[data-a]'); if (!b) return; const l = rows.find(x => x.id === b.closest('[data-lid]').dataset.lid); if (!l) return;
+        if (b.dataset.a === 'toggle'){
+          const removing = l.status !== 'removed';
+          if (removing && !await confirmSheet({title:'Remove this listing?', body:'It is hidden from buyers and the seller is notified. You can restore it later.', ok:'Remove'})) return;
+          if (await act(() => API.owner.patchListing(l.id, removing ? 'removed' : 'active'), removing ? 'Listing removed' : 'Listing restored')) { Sync.pull().catch(()=>{}); load(); }
+        }
+        if (b.dataset.a === 'delete' && await confirmSheet({title:'Delete this listing forever?', body:'Chats and saved entries for it are deleted too. This cannot be undone.', ok:'Delete'})
+          && await act(() => API.owner.deleteListing(l.id), 'Listing deleted')) { Sync.pull().catch(()=>{}); load(); }
+      };
+    }
+
+    if (tab === 'finance') API.owner.finance().then(rows => {
+      const label = {new:'New', contacted:'Contacted', closed:'Closed'};
+      body.innerHTML = rows.length ? rows.map(r => `<div class="card my-row" data-fid="${esc(r.id)}"><div class="mid"><h4>${esc(r.listingTitle)}</h4>
+        <div class="muted" style="font-size:13px">${esc(r.name)} (age ${r.age}) · <a class="link" href="tel:${esc(r.mobile)}">${esc(r.mobile)}</a> · ${esc(r.city)}, ${esc(r.state)} ${esc(r.pincode)}</div>
+        <div class="muted" style="font-size:12.5px">${esc(r.userEmail)} · submitted ${ago(r.createdAt)}</div></div>
+        <div class="acts"><select class="input" data-fs aria-label="Request status" style="height:38px;width:auto">${Object.entries(label).map(([k,n])=>`<option value="${k}" ${r.status===k?'selected':''}>${n}</option>`).join('')}</select></div></div>`).join('')
+        : emptyState('bank','No finance requests yet','Requests from buyers appear here.');
+      $$('[data-fs]',body).forEach(s => s.onchange = async () => { await act(() => API.owner.patchFinance(s.closest('[data-fid]').dataset.fid, s.value), 'Status updated'); });
+    }).catch(fail);
+
+    if (tab === 'banners'){
+      let list = [];
+      const draw = () => {
+        body.innerHTML = `<div class="card panel" style="margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>Home banner</b><div class="muted" style="font-size:13px">Slides shown at the top of the home page: a photo, a title and a short description, with an optional button. Best photo size is wide, about 1600 × 840. If you have no banners the default slides are shown.</div></div><button class="btn btn-primary btn-sm" data-add>${I('plus','xs')} Add banner</button></div>`
+          + (list.length ? list.map((b,i) => `<div class="card my-row" data-bid="${esc(b.id)}" style="${b.enabled?'':'opacity:.65'}">
+            <div class="thumb" style="width:170px;aspect-ratio:16/8.4;background:var(--line-2);display:flex;align-items:center;justify-content:center">${b.hasImage?`<img src="/api/banners/${esc(b.id)}/image?v=${b.v}" alt="">`:'<span class="muted" style="font-size:12px">No photo</span>'}</div>
+            <div class="mid"><h4>${esc(b.title)} ${b.enabled?'':'<span class="status removed">Hidden</span>'}</h4>
+              <div class="muted" style="font-size:13px">${esc(b.description) || 'No description'}</div>
+              <div class="muted" style="font-size:12.5px">${b.link ? `Button “${esc(b.buttonText || 'Learn more')}” → ${esc(b.link)}` : 'No button'}</div></div>
+            <div class="acts" style="align-items:center"><label class="chk"><input type="checkbox" data-t="enabled" ${b.enabled?'checked':''}> Shown</label>
+              <button class="btn btn-ghost btn-sm" data-a="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn btn-ghost btn-sm" data-a="down" ${i===list.length-1?'disabled':''} aria-label="Move down">↓</button>
+              <button class="btn btn-ghost btn-sm" data-a="edit">${I('edit','xs')} Edit</button><button class="btn btn-ghost btn-sm" data-a="delete" aria-label="Delete banner">${I('trash','xs')}</button></div></div>`).join('')
+          : emptyState('image','No banners yet','Add your first banner. Until then, visitors see the default slides.'));
+      };
+      const load = () => API.owner.banners().then(r => { list = r; draw(); }).catch(fail);
+      const apply = (p, msg) => p.then(r => { list = r; draw(); if (msg) toast(msg); Sync.pull().catch(()=>{}); }).catch(e => { toast(e.message,'bad'); load(); });
+      load();
+      function bannerSheet(b){
+        let image; // undefined = keep what is stored, '' = remove, 'data:…' = new photo
+        openSheet(`<h3>${b?'Edit banner':'Add banner'}</h3><form data-bf novalidate>
+          <div class="field"><label>Photo</label><div data-prev style="aspect-ratio:16/8.4;border-radius:12px;overflow:hidden;background:var(--line-2);display:flex;align-items:center;justify-content:center"></div>
+            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><label class="btn btn-ghost btn-sm" style="cursor:pointer">${I('camera','xs')} Choose photo<input type="file" accept="image/*" hidden data-file></label><button type="button" class="btn btn-ghost btn-sm" data-rmimg>Remove photo</button></div><div class="err-msg" data-err="image" hidden></div></div>
+          <div class="field"><label for="bn_title">Title</label><input class="input" id="bn_title" name="title" maxlength="80" value="${esc(b?.title||'')}" placeholder="e.g. Festival offers on tippers"><div class="err-msg" data-err="title" hidden></div></div>
+          <div class="field"><label for="bn_desc">Short description <span class="muted" data-count></span></label><textarea class="input" id="bn_desc" name="description" rows="3" maxlength="160" placeholder="One or two lines shown under the title">${esc(b?.description||'')}</textarea></div>
+          <div class="grid2"><div class="field"><label for="bn_btn">Button text <span class="muted">(optional)</span></label><input class="input" id="bn_btn" name="buttonText" maxlength="24" value="${esc(b?.buttonText||'')}" placeholder="e.g. View tippers"></div>
+            <div class="field"><label for="bn_link">Button link <span class="muted">(optional)</span></label><input class="input" id="bn_link" name="link" value="${esc(b?.link||'')}" placeholder="#/list/trucks/tippers or https://…"><div class="err-msg" data-err="link" hidden></div></div></div>
+          <label class="chk" style="display:flex;gap:8px;margin:2px 0 14px"><input type="checkbox" name="enabled" ${b?.enabled===false?'':'checked'}> Show this banner on the home page</label>
+          <button class="btn btn-primary btn-block">${b?'Save banner':'Add banner'}</button></form>`, (el, close) => {
+          const f = $('[data-bf]',el), prev = $('[data-prev]',el);
+          const showPrev = () => { const src = image ? image : (image === undefined && b?.hasImage) ? `/api/banners/${b.id}/image?v=${b.v}` : ''; prev.innerHTML = src ? `<img src="${esc(src)}" alt="" style="width:100%;height:100%;object-fit:cover">` : '<span class="muted" style="font-size:13px">No photo</span>'; };
+          showPrev();
+          const cnt = () => { $('[data-count]',el).textContent = `${f.description.value.length}/160`; }; f.description.oninput = cnt; cnt();
+          $('[data-file]',el).onchange = async e => { const file = e.target.files[0]; e.target.value=''; if (!file) return; try { image = await compressImage(file, 1600, .8); $('[data-err="image"]',el).hidden = true; showPrev(); } catch(er){ const m = $('[data-err="image"]',el); m.textContent = er.message; m.hidden = false; } };
+          $('[data-rmimg]',el).onclick = () => { image = ''; showPrev(); };
+          f.onsubmit = ev => { ev.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true);
+            const p = {title:f.title.value, description:f.description.value, buttonText:f.buttonText.value, link:f.link.value.trim(), enabled:f.enabled.checked};
+            if (image !== undefined) p.image = image;
+            (b ? API.owner.patchBanner(b.id, p) : API.owner.addBanner(p)).then(r => { list = r; draw(); close(); toast(b?'Banner saved':'Banner added'); Sync.pull().catch(()=>{}); })
+              .catch(er => { const m = $(`[data-err="${er.field}"]`,el); if (m){ m.textContent = er.message; m.hidden = false; } else toast(er.message,'bad'); }); };
+        });
+      }
+      body.onclick = async e => {
+        if (e.target.closest('[data-add]')) return bannerSheet(null);
+        const row = e.target.closest('[data-bid]'); if (!row) return; const b = list.find(x => x.id === row.dataset.bid); const a = e.target.closest('[data-a]')?.dataset.a;
+        if (a==='up' || a==='down') return apply(API.owner.moveBanner(b.id, a==='up' ? -1 : 1));
+        if (a==='edit') return bannerSheet(b);
+        if (a==='delete' && await confirmSheet({title:`Delete “${b.title}”?`, body:'It is removed from the home page. This cannot be undone.', ok:'Delete'})) apply(API.owner.deleteBanner(b.id), 'Banner deleted');
+      };
+      body.onchange = e => { const t = e.target.closest('[data-t]'); if (!t) return; apply(API.owner.patchBanner(t.closest('[data-bid]').dataset.bid, {enabled:t.checked}), t.checked ? 'Banner shown' : 'Banner hidden'); };
+    }
+
+    if (tab === 'form'){
+      const TYPE_LABEL = {subtype:'Dropdown (truck types)', brand:'Dropdown (brands)', text:'Short text', number:'Number', select:'Dropdown', textarea:'Long text', tyres:'Dropdown (tyres)', state:'Dropdown (states)', toggle:'Yes / No', checks:'Checklist', photos:'Photo upload', color:'Colour picker'};
+      const GROUP_LABEL = {vehicle:'Vehicle', details:'Details', media:'Photos', pricing:'Price & location'};
+      const REQUIRABLE = ['text','number','select','textarea','tyres','photos','checks'];
+      let fields = [];
+      const draw = () => {
+        body.innerHTML = `<div class="card panel" style="margin-bottom:6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>Sell form</b><div class="muted" style="font-size:13px">Choose what sellers fill in on the “Sell your vehicle” page. Changes apply immediately. Fields marked “Always on” are needed for every listing.</div></div><button class="btn btn-primary btn-sm" data-add>${I('plus','xs')} Add field</button></div>`
+        + ['vehicle','details','media','pricing'].map(g => { const rows = fields.filter(f => f.group===g);
+          return rows.length ? `<h3 style="margin:18px 0 8px;font-size:15px">${GROUP_LABEL[g]}</h3>` + rows.map((f,i) => `<div class="card my-row" data-fk="${esc(f.key)}" style="${f.enabled?'':'opacity:.65'}"><div class="mid">
+            <h4>${esc(f.label)} ${f.locked?`<span class="status closed">Always on</span>`:''}${f.builtin?'':' <span class="status contacted">Custom</span>'}${f.enabled?'':' <span class="status removed">Hidden</span>'}</h4>
+            <div class="muted" style="font-size:12.5px">${esc(TYPE_LABEL[f.type]||f.type)}${f.options.length?` · ${f.options.length} options`:''}</div></div>
+            <div class="acts" style="align-items:center">
+              <label class="chk"><input type="checkbox" data-t="enabled" ${f.enabled?'checked':''} ${f.locked?'disabled':''}> Shown</label>
+              ${REQUIRABLE.includes(f.type)?`<label class="chk"><input type="checkbox" data-t="required" ${f.required?'checked':''} ${f.locked||!f.enabled?'disabled':''}> Required</label>`:''}
+              <button class="btn btn-ghost btn-sm" data-a="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn btn-ghost btn-sm" data-a="down" ${i===rows.length-1?'disabled':''} aria-label="Move down">↓</button>
+              <button class="btn btn-ghost btn-sm" data-a="edit">${I('edit','xs')} Edit</button>${f.builtin?'':`<button class="btn btn-ghost btn-sm" data-a="delete" aria-label="Delete field">${I('trash','xs')}</button>`}
+            </div></div>`).join('') : ''; }).join('');
+      };
+      const load = () => API.owner.formFields().then(r => { fields = r; draw(); }).catch(fail);
+      const apply = (p, msg) => p.then(r => { fields = r; draw(); if (msg) toast(msg); }).catch(e => { toast(e.message,'bad'); load(); });
+      load();
+      const optsInput = (v='') => `<div class="field" data-opts><label for="ff_opts">Options <span class="muted">(one per line)</span></label><textarea class="input" id="ff_opts" name="options" rows="5">${esc(v)}</textarea><div class="err-msg" data-err="options" hidden></div></div>`;
+      const showErr = (f, er) => { const el = $(`[data-err="${er.field}"]`,f); if (el){ el.textContent = er.message; el.hidden = false; } else toast(er.message,'bad'); };
+      const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean);
+      body.onclick = async e => {
+        if (e.target.closest('[data-add]')){
+          return openSheet(`<h3>Add a field</h3><form data-ff novalidate>
+            <div class="field"><label for="ff_label">Field name</label><input class="input" id="ff_label" name="label" placeholder="e.g. Permit valid until"><div class="err-msg" data-err="label" hidden></div></div>
+            <div class="field"><label for="ff_type">Field type</label><select class="input" id="ff_type" name="type">${[['text','Short text'],['number','Number'],['select','Dropdown'],['textarea','Long text'],['toggle','Yes / No']].map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select></div>
+            <div class="field"><label for="ff_group">Show in section</label><select class="input" id="ff_group" name="group"><option value="details">Details</option><option value="pricing">Price & location</option></select></div>
+            <div data-optwrap hidden>${optsInput()}</div>
+            <label class="chk" style="display:flex;gap:8px;margin:6px 0 14px"><input type="checkbox" name="required"> Required</label>
+            <button class="btn btn-primary btn-block">Add field</button></form>`, (el, close) => {
+            const f = $('[data-ff]',el), tsel = f.type; const sync = () => { $('[data-optwrap]',el).hidden = tsel.value !== 'select'; };
+            tsel.onchange = sync;
+            f.onsubmit = ev => { ev.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true);
+              API.owner.addField({label:f.label.value, type:tsel.value, group:f.group.value, required:f.required.checked, options:lines(f.options.value)}).then(r => { fields = r; draw(); close(); toast('Field added'); }).catch(er => showErr(f, er)); };
+          });
+        }
+        const row = e.target.closest('[data-fk]'); if (!row) return; const key = row.dataset.fk; const fld = fields.find(x => x.key===key);
+        const a = e.target.closest('[data-a]')?.dataset.a;
+        if (a==='up' || a==='down') return apply(API.owner.moveField(key, a==='up' ? -1 : 1));
+        if (a==='delete'){ if (await confirmSheet({title:`Delete “${fld.label}”?`, body:'It is removed from the Sell form. Values sellers already entered stay saved but are no longer shown on listings.', ok:'Delete'})) apply(API.owner.deleteField(key), 'Field deleted'); return; }
+        if (a==='edit'){
+          const hasOpts = ['select','checks'].includes(fld.type), hasPh = ['text','number','textarea'].includes(fld.type);
+          openSheet(`<h3>Edit “${esc(fld.label)}”</h3><form data-ff novalidate>
+            <div class="field"><label for="ff_label">Field name</label><input class="input" id="ff_label" name="label" value="${esc(fld.label)}"><div class="err-msg" data-err="label" hidden></div></div>
+            ${hasPh?`<div class="field"><label for="ff_ph">Hint text <span class="muted">(shown inside the empty box)</span></label><input class="input" id="ff_ph" name="placeholder" value="${esc(fld.placeholder)}"></div>`:''}
+            ${hasOpts?optsInput(fld.options.join('\n')):''}
+            ${!fld.builtin?`<div class="field"><label for="ff_group">Show in section</label><select class="input" id="ff_group" name="group"><option value="details" ${fld.group==='details'?'selected':''}>Details</option><option value="pricing" ${fld.group==='pricing'?'selected':''}>Price & location</option></select></div>`:''}
+            <button class="btn btn-primary btn-block">Save</button></form>`, (el, close) => {
+            const f = $('[data-ff]',el);
+            f.onsubmit = ev => { ev.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true);
+              const p = {label:f.label.value}; if (f.placeholder) p.placeholder = f.placeholder.value; if (f.options) p.options = lines(f.options.value); if (f.group) p.group = f.group.value;
+              API.owner.patchField(key, p).then(r => { fields = r; draw(); close(); toast('Field updated'); }).catch(er => showErr(f, er)); };
+          });
+        }
+      };
+      body.onchange = e => { const t = e.target.closest('[data-t]'); if (!t) return; const key = t.closest('[data-fk]').dataset.fk; apply(API.owner.patchField(key, {[t.dataset.t]: t.checked}), t.dataset.t==='enabled' ? (t.checked ? 'Field shown' : 'Field hidden') : 'Saved'); };
+    }
   }};
 };
 Views.notFound = (msg='The page you are looking for does not exist.') => ({ nav:'home', html: `${topbar({back:'#/', title:'Not found'})}<div class="wrap page">${emptyState('search','Nothing here', msg, `<a href="#/" class="btn btn-primary">Go to home</a>`)}</div>`});
@@ -2077,10 +2138,11 @@ const ROUTES = [
   ['v/:id','details'], ['seller/:id','seller'], ['chat/:id','chat', true], ['messages','messages', true],
   ['finance/:id','finance'], ['finance-done/:id','financeDone', true], ['sell','sell', true], ['sell/:id','sell', true],
   ['profile','profile', true], ['profile/:tab','profile', true], ['favorites','favorites', true], ['notifications','notifications', true],
-  ['search','search'], ['login','login'], ['signup','signup'],
+  ['search','search'], ['login','login'], ['signup','signup'], ['owner/login','ownerLogin'],
+  ['owner','owner','owner'], ['owner/:tab','owner','owner'],
 ];
 const App = {
-  cleanup: [], viewed: new Set(), chatDraw: null,
+  cleanup: [], viewed: new Set(), chatDraw: null, started: false,
   match(path){
     const segs = path.split('/').filter(Boolean);
     for (const [pat, name, auth] of ROUTES){
@@ -2096,14 +2158,17 @@ const App = {
     $('#layer').innerHTML = '';
     const raw = location.hash.replace(/^#\/?/, ''); const [path, qs=''] = raw.split('?'); const q = new URLSearchParams(qs);
     const r = this.match(path);
-    if (r.auth && !API.meId()){ location.replace('#/login?next=' + encodeURIComponent(location.hash || '#/')); return; }
-    if ((r.name==='login'||r.name==='signup') && API.meId()){ location.replace(q.get('next')||'#/'); return; }
+    if (r.auth === 'owner' && !API.auth.isOwner()){ location.replace('#/owner/login'); return; }
+    if (r.auth === true && API.auth.isOwner()){ location.replace('#/owner'); return; }
+    if (r.auth === true && !API.meId()){ location.replace('#/login?next=' + encodeURIComponent(location.hash || '#/')); return; }
+    if ((r.name==='login'||r.name==='signup'||r.name==='ownerLogin') && API.meId()){ location.replace(API.auth.isOwner() ? '#/owner' : (q.get('next')||'#/')); return; }
     let v;
     try {
       switch(r.name){
         case 'brandsTruck': v = Views.brands({cat:'trucks', sub:r.params.sub}); break;
         case 'login': v = Views.auth(r.params, q, 'login'); break;
         case 'signup': v = Views.auth(r.params, q, 'signup'); break;
+        case 'ownerLogin': v = Views.auth(r.params, q, 'login', 'owner'); break;
         case 'notFound': v = Views.notFound(); break;
         default: v = Views[r.name](r.params, q);
       }
@@ -2116,7 +2181,7 @@ const App = {
     const root = $('#app'); v.mount && v.mount(root);
     this.refreshBadges();
     const t = $('.topbar h1', root)?.textContent || $('.auth-card h1', root)?.textContent;
-    document.title = (r.name==='home' ? 'Spidy · Commercial Vehicle Marketplace' : (t ? t + ' · Spidy' : 'Spidy'));
+    document.title = (r.name==='home' ? 'Autoreboot · Commercial Vehicle Marketplace' : (t ? t + ' · Autoreboot' : 'Autoreboot'));
   },
   refreshBadges(){
     const n = API.notify.unread(), m = API.chats.unreadTotal();
@@ -2131,6 +2196,7 @@ document.addEventListener('click', e => {
   const fav = e.target.closest('[data-fav]');
   if (fav){ e.preventDefault(); e.stopPropagation();
     if (!API.meId()) return needLogin(location.hash);
+    if (API.auth.isOwner()) return toast('Owner accounts cannot save vehicles','bad');
     const id = fav.dataset.fav; const on = API.favs.toggle(id);
     $$(`[data-fav="${id}"]`).forEach(b=>{ b.classList.toggle('on', on); b.classList.toggle('fav-on', on); b.setAttribute('aria-pressed', on); });
     toast(on ? 'Saved to your list' : 'Removed from saved'); return;
@@ -2139,8 +2205,8 @@ document.addEventListener('click', e => {
   if (back){ e.preventDefault(); if (history.length > 1 && App._navCount > 1) history.back(); else go(back.dataset.back); return; }
   if (e.target.closest('[data-drawer]')){
     const me = API.auth.me(); const ov = document.createElement('div'); ov.className='overlay'; ov.style.alignItems='stretch';
-    ov.innerHTML = `<div class="drawer"><div style="display:flex;align-items:center;gap:12px;padding:6px 8px 18px;border-bottom:1px solid var(--line);margin-bottom:10px">${avatar(me)}<div>${me?`<b>${esc(me.name)}</b><div class="muted" style="font-size:13px">${esc(me.email)}</div>`:`<b>Welcome to Spidy</b><div><a href="#/login" class="link">Log in or sign up</a></div>`}</div></div>
-      ${[['home','#/','Home'],['cart','#/buy','Buy a vehicle'],['tag','#/sell','Sell your vehicle'],['search','#/search','Search'],['heart','#/favorites','Saved vehicles'],['msg','#/messages','Messages'],['bell','#/notifications','Notifications'],['bank','#/profile/finance','Finance requests'],['user','#/profile','Profile']].map(([i,h,n])=>`<a href="${h}">${I(i)} ${n}</a>`).join('')}
+    ov.innerHTML = `<div class="drawer"><div style="display:flex;align-items:center;gap:12px;padding:6px 8px 18px;border-bottom:1px solid var(--line);margin-bottom:10px">${avatar(me)}<div>${me?`<b>${esc(me.name)}</b><div class="muted" style="font-size:13px">${esc(me.email)}</div>`:`<b>Welcome to Autoreboot</b><div><a href="#/login" class="link">Log in or sign up</a></div>`}</div></div>
+      ${(me && me.role==='owner' ? [['home','#/','Home'],['cart','#/buy','Browse vehicles'],['search','#/search','Search'],['gauge','#/owner','Owner dashboard']] : [['home','#/','Home'],['cart','#/buy','Buy a vehicle'],['tag','#/sell','Sell your vehicle'],['search','#/search','Search'],['heart','#/favorites','Saved vehicles'],['msg','#/messages','Messages'],['bell','#/notifications','Notifications'],['bank','#/profile/finance','Finance requests'],['user','#/profile','Profile']]).map(([i,h,n])=>`<a href="${h}">${I(i)} ${n}</a>`).join('')}
       <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">${CATS.map(c=>`<a href="#/c/${c.id}" style="font-weight:500;color:var(--ink-2)">${I(c.icon,'sm')} ${esc(c.name)}</a>`).join('')}</div></div>`;
     ov.onclick = ev => { if (ev.target===ov || ev.target.closest('a')) ov.remove(); };
     $('#layer').appendChild(ov);
@@ -2148,7 +2214,6 @@ document.addEventListener('click', e => {
 });
 App._navCount = 0;
 window.addEventListener('hashchange', () => { App._navCount++; App.render(); });
-window.addEventListener('storage', e => { if (e.key==='spidy_db_v1') location.reload(); });
 
 /* extra layout rules that depend on the shell */
 document.head.insertAdjacentHTML('beforeend', `<style>
@@ -2165,16 +2230,32 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 
 @media (max-width:959px){ .is-chat .chat-page{height:calc(100dvh - 64px)} }
 a.stat{display:block}
+.tick{opacity:.55;display:inline-flex}.tick.seen{opacity:1;color:#2563EB}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
+.role-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 18px}.role-switch+.tabs{margin-top:-4px}
+.role-switch a{display:flex;align-items:center;justify-content:center;gap:6px;height:44px;border:1px solid var(--line);border-radius:12px;font-weight:700;color:var(--ink-2)}
+.role-switch a.on{border-color:var(--primary);background:var(--primary-50);color:var(--primary)}
+.ogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.ostat{padding:16px;display:flex;flex-direction:column;gap:2px}.ostat small{color:var(--ink-2);font-weight:600}.ostat b{font-size:26px;letter-spacing:-.02em}.ostat span{font-size:12.5px;color:var(--ink-3)}
+.ocols{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media (max-width:760px){.ocols{grid-template-columns:1fr}}
+.orow{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}.orow:first-of-type{border-top:0}.orow small{display:block;color:var(--ink-2);font-size:12.5px}.orow .grow{flex:1;min-width:0}
+.otools{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.otools .input{flex:1;min-width:200px}
+.status.removed{background:var(--primary-50);color:var(--primary)}.status.closed{background:var(--line-2);color:var(--ink-2)}
 </style>`);
 
 /* boot */
 (async function boot(){
-  try { const t = localStorage.getItem('spidy_theme'); if (t) document.documentElement.dataset.theme = t; } catch(e){}
-  if (!DB.ready()) await seed();
-  if (!DB.persistent()) setTimeout(()=>toast('Browser storage is blocked — changes will not be saved after you close this page.','bad'), 800);
+  try { const t = localStorage.getItem('autoreboot_theme'); if (t) document.documentElement.dataset.theme = t; } catch(e){}
+  try { await Sync.pull(); }
+  catch(e){
+    $('#app').innerHTML = `<div class="wrap page">${emptyState('info','Cannot reach the server', e.message, `<button class="btn btn-primary" onclick="location.reload()">Try again</button>`)}</div>`;
+    return;
+  }
   if (!location.hash) location.replace('#/');
-  App.render();
-  setInterval(()=>App.refreshBadges(), 15000);
+  App.started = true; App.render();
+  setInterval(() => { if (!document.hidden && !Realtime.up) Sync.pull().catch(()=>{}); }, 6000);
+  setInterval(() => { if (!document.hidden) Sync.pull().catch(()=>{}); }, 45000); // safety net even when the live stream is up
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) Sync.pull().catch(()=>{}); });
 })();
 </script>
 </body>
