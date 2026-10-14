@@ -54,3 +54,22 @@ Security notes: passwords are scrypt-hashed with a per-user salt; sessions are r
 server-side and sent in an `HttpOnly; SameSite=Lax` cookie (`Secure` over HTTPS — set `TRUST_PROXY=true`
 behind a proxy); login endpoints are rate limited; mutating requests must be same-origin JSON; every
 write checks role and ownership on the server; uploaded images are validated as data-URL images with size caps.
+
+## Deploy to Render
+
+**One click (Blueprint):** Render dashboard → **New → Blueprint** → select this repo and branch. Render reads
+`render.yaml`, asks for `OWNER_EMAIL` and `OWNER_PASSWORD`, creates the web service and a 1 GB disk for the database
+(paid *Starter* plan, because free instances have no persistent disk and would lose all data on restart).
+
+**Manual (New → Web Service):**
+
+| Setting | Value |
+|---|---|
+| Language | Node |
+| Build command | `npm install` |
+| Start command | `npm start` |
+| Health check path | `/healthz` |
+| Environment | `NODE_VERSION=22.22.0`, `NODE_ENV=production`, `TRUST_PROXY=true`, `OWNER_EMAIL`, `OWNER_PASSWORD` |
+| Persistent data | Add a Disk mounted at `/var/data` and set `DATABASE_FILE=/var/data/autoreboot.db` |
+
+After deploying, the owner signs in at `https://<your-service>.onrender.com/owner`.

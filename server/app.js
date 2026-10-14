@@ -141,6 +141,7 @@ export function createApp({ demo = true } = {}) {
     next();
   });
   app.get('/favicon.ico', (req, res) => res.status(204).end());
+  app.get('/healthz', (req, res) => { db.prepare('SELECT 1').get(); res.json({ ok: true }); }); // used by hosting health checks
   // private entry point for the owner; it is not linked from anywhere in the public site
   app.get(['/owner', '/owner/'], (req, res) => res.redirect(302, '/#/owner/login'));
   app.use(express.json({ limit: '12mb' }));

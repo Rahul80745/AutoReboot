@@ -300,3 +300,9 @@ test('owner has a private URL and banners can be managed', async () => {
   assert.equal((await o('GET', '/api/owner/banners')).data.banners[0].hasImage, false);
   assert.equal((await o('DELETE', `/api/owner/banners/${b.id}`)).data.banners.length, 0);
 });
+
+test('health check endpoint', async () => {
+  const res = await fetch(base + '/healthz');
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+});
