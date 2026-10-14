@@ -70,7 +70,7 @@ test('owner and user sign-ins are separate', async () => {
   // owners cannot use user-only features
   assert.equal((await c('POST', '/api/listings', vehicle)).status, 403);
   // demo dealer accounts cannot be signed into
-  const d = await client()('POST', '/api/auth/login', { id: 'u_venk@seller.spidy.in', password: '!', as: 'user' });
+  const d = await client()('POST', '/api/auth/login', { id: 'u_venk@seller.autoreboot.in', password: '!', as: 'user' });
   assert.equal(d.status, 401);
 });
 
@@ -125,7 +125,7 @@ test('chat between two users, unread tracking, hide', async () => {
 
 test('demo dealer auto-replies', async () => {
   const c = client();
-  await c('POST', '/api/auth/login', { id: 'demo@spidy.in', password: 'demo1234', as: 'user' });
+  await c('POST', '/api/auth/login', { id: 'demo@autoreboot.in', password: 'demo1234', as: 'user' });
   const { data: { id } } = await c('POST', '/api/chats', { listingId: 'LOR123456' });
   await c('POST', `/api/chats/${id}/messages`, { text: 'Is it still available?' });
   await new Promise((r) => setTimeout(r, 2600));

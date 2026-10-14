@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Spidy · Commercial Vehicle Marketplace</title>
+<title>Autoreboot · Commercial Vehicle Marketplace</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -508,7 +508,7 @@ textarea.input{height:auto;padding:12px 14px;resize:vertical;min-height:110px}
 <div id="layer"></div>
 <script>
 /* =====================================================================
-   SPIDY — Commercial Vehicle Marketplace
+   AUTOREBOOT — Commercial Vehicle Marketplace
    Single-page app served by the Express + SQLite backend (see /server).
    Roles: user (buy/sell/chat) and owner (admin console).
    ===================================================================== */
@@ -966,7 +966,7 @@ const API = (() => {
     isOwner: () => !!Store.me && Store.me.role === 'owner',
     async register(d){ const r = await http('POST', '/api/auth/register', d); await Sync.reset(); return r.user; },
     async login({id, password, as}){ const r = await http('POST', '/api/auth/login', {id, password, as}); await Sync.reset(); return r.user; },
-    async demo(){ return auth.login({id:'demo@spidy.in', password:'demo1234', as:'user'}); },
+    async demo(){ return auth.login({id:'demo@autoreboot.in', password:'demo1234', as:'user'}); },
     async logout(){ try { await http('POST', '/api/auth/logout'); } catch(e){} Store.me = null; await Sync.reset(); },
     async update(patch){ const r = await http('PATCH', '/api/auth/me', patch); await Sync.pull(); return r.user; },
     async changePassword(oldPw, newPw){ await http('POST', '/api/auth/password', {old:oldPw, new:newPw}); },
@@ -1172,7 +1172,7 @@ function globalBar(active){
   const me = API.auth.me(); const isOwner = API.auth.isOwner();
   const link = (h, n, k) => `<a href="${h}" class="${active===k?'on':''}">${n}</a>`;
   return `<div class="gbar"><div class="wrap topbar-in">
-    <a href="#/" class="brand-mark"><span class="logo">${I('truck','sm')}</span>Spidy</a>
+    <a href="#/" class="brand-mark"><span class="logo">${I('truck','sm')}</span>Autoreboot</a>
     <nav class="desk-nav">${link('#/','Home','home')}${link('#/buy','Buy','buy')}${link('#/search','Search','search')}${isOwner ? link('#/owner','Owner dashboard','owner') : link('#/sell','Sell','sell')+link('#/messages','Messages','messages')}</nav>
     <div style="flex:1"></div>
     ${isOwner ? '' : `<a href="#/messages" class="icon-btn" aria-label="Messages">${I('msg')}<span data-badge="msgdot"></span></a>${favBellRight()}`}
@@ -1252,7 +1252,7 @@ Views.home = () => {
       <div><span class="t-ic">${I('lock','lg')}</span>Private chat, number stays hidden</div>
       <div><span class="t-ic">${I('headset','lg')}</span>Finance and support team</div>
     </div>
-    <div class="footer">Spidy · Commercial vehicle marketplace · Data is stored on this device</div>
+    <div class="footer">Autoreboot · Commercial vehicle marketplace · Data is stored on this device</div>
   </div>`,
   mount(root){
     let i = 0, timer;
@@ -1372,7 +1372,7 @@ Views.search = (_, q) => {
   const f = parseFilters(q);
   const hasQuery = f.q || f.category || activeFilterCount(f) || q.get('sort');
   const rows = hasQuery ? API.listings.querySync(f) : [];
-  let recent = []; try { recent = JSON.parse(localStorage.getItem('spidy_recent')||'[]'); } catch(e){}
+  let recent = []; try { recent = JSON.parse(localStorage.getItem('autoreboot_recent')||'[]'); } catch(e){}
   const popular = ['Tipper','Tata','BS-VI','Tractor','Hyderabad','JCB','Bus','Tanker'];
   const nf = activeFilterCount(f);
   return { nav:'search', html: `${topbar({back:'#/', title:'Search', right:favBellRight()})}
@@ -1388,10 +1388,10 @@ Views.search = (_, q) => {
   </div>`,
   mount(root){
     $('[data-search]',root).onsubmit = e => { e.preventDefault(); const v=e.target.q.value.trim();
-      if (v){ recent=[v, ...recent.filter(r=>r.toLowerCase()!==v.toLowerCase())].slice(0,8); try{localStorage.setItem('spidy_recent',JSON.stringify(recent));}catch(er){} }
+      if (v){ recent=[v, ...recent.filter(r=>r.toLowerCase()!==v.toLowerCase())].slice(0,8); try{localStorage.setItem('autoreboot_recent',JSON.stringify(recent));}catch(er){} }
       go('#/search' + filterQuery({...f, q:v})); };
     const cq=$('[data-clearq]',root); if(cq) cq.onclick=()=>go('#/search'+filterQuery({...f,q:''}));
-    const cr=$('[data-clear-recent]',root); if(cr) cr.onclick=()=>{ try{localStorage.removeItem('spidy_recent');}catch(e){} App.render(); };
+    const cr=$('[data-clear-recent]',root); if(cr) cr.onclick=()=>{ try{localStorage.removeItem('autoreboot_recent');}catch(e){} App.render(); };
     const s=$('[data-sort]',root); if(s) s.onchange=e=>go('#/search'+filterQuery({...f, sort:e.target.value}));
     const open = () => filterSheet(f, f.category, n => go('#/search' + filterQuery(n)));
     $('[data-filters]',root).onclick = open;
@@ -1413,7 +1413,7 @@ Views.details = ({id}) => {
   return { nav:'home', html: `${topbar({back:backTo, title:typeLabel(l), sub:'Vehicle Details', right:`${heartBtn(l.id,'icon-btn')}<button class="icon-btn" data-share aria-label="Share">${I('share')}</button>`})}
   <div class="wrap page">
     ${l.status==='sold'?`<div class="notice" style="background:var(--line-2);border-color:var(--line)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This vehicle is marked as sold.</b><br>Browse similar vehicles below.</div></div>`:''}
-    ${l.status==='removed'?`<div class="notice" style="background:var(--primary-50);border-color:var(--primary-100)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This listing was removed by the Spidy team.</b><br>It is hidden from buyers.</div></div>`:''}
+    ${l.status==='removed'?`<div class="notice" style="background:var(--primary-50);border-color:var(--primary-100)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This listing was removed by the Autoreboot team.</b><br>It is hidden from buyers.</div></div>`:''}
     <div class="det-grid">
       <div>
         <div class="gallery"><div class="g-main" data-main>${renderImg(imgs[0], l.title)}</div><span class="g-count" data-count>1 / ${imgs.length}</span>
@@ -1451,7 +1451,7 @@ Views.details = ({id}) => {
     const p=$('[data-prev]',root), nx=$('[data-next]',root); if(p){p.onclick=()=>show(i-1); nx.onclick=()=>show(i+1);}
     $('[data-main]',root).onclick=()=>lightbox(imgs,i); $('[data-main]',root).style.cursor='zoom-in';
     $('[data-share]',root).onclick = async () => {
-      const url = location.href; const data={title:l.title, text:`${l.title} for ${inr(l.price)} on Spidy`, url};
+      const url = location.href; const data={title:l.title, text:`${l.title} for ${inr(l.price)} on Autoreboot`, url};
       try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(url); toast('Link copied'); } } catch(e){ if(e.name!=='AbortError') toast('Could not share this link','bad'); }
     };
     $$('[data-chat]',root).forEach(ch => ch.onclick = async () => {
@@ -1577,7 +1577,7 @@ Views.finance = ({id}) => {
       ${field('city','building','City','text','Enter your city', me?.city||'')}
       ${field('state','map','State','select','', me?.state||'')}
       ${field('pincode','pin','Pincode','text','Enter your pincode','', 'inputmode="numeric" maxlength="6"')}
-      <div class="important">${I('shieldCheck')}<div><b style="color:var(--ink)">Important:</b> By submitting this form, you authorize <b style="color:var(--ink)">Spidy</b> to contact you regarding finance assistance through call, SMS or WhatsApp.<br>Your details are not directly shared with finance companies.</div></div>
+      <div class="important">${I('shieldCheck')}<div><b style="color:var(--ink)">Important:</b> By submitting this form, you authorize <b style="color:var(--ink)">Autoreboot</b> to contact you regarding finance assistance through call, SMS or WhatsApp.<br>Your details are not directly shared with finance companies.</div></div>
       <button class="btn btn-primary btn-block" style="height:56px;font-size:16px" data-submit>${I('send')} Submit & get finance assistance</button>
       <p class="muted" style="text-align:center;font-size:13px;margin:12px 0 0;display:flex;align-items:center;justify-content:center;gap:6px">${I('lock','xs')} Your information is protected and used only for finance assistance.</p>
     </form>
@@ -1633,7 +1633,7 @@ const FORM_TITLES = {vehicle:'Vehicle', details:'Details', media:'Photos', prici
 Views.sell = ({id}) => {
   const editing = id ? API.listings.get(id) : null;
   if (id && (!editing || editing.sellerId !== API.meId() || editing.status === 'removed')) return Views.notFound('You can only edit your own listings.');
-  const DKEY = 'spidy_draft_' + API.meId();
+  const DKEY = 'autoreboot_draft_' + API.meId();
   const me0 = API.auth.me();
   let d;
   if (editing) d = JSON.parse(JSON.stringify(editing));
@@ -1813,7 +1813,7 @@ Views.profile = ({tab='listings'}) => {
       pf.phone.addEventListener('input',()=>pf.phone.value=pf.phone.value.replace(/\D/g,''));
       pf.onsubmit=async e=>{ e.preventDefault(); $$('[data-err]',pf).forEach(x=>x.hidden=true);
         try{ await API.auth.update(Object.fromEntries(new FormData(pf))); toast('Profile saved'); App.render(); } catch(er){ const el=$(`[data-err="${er.field}"]`,pf); if(el){el.textContent=er.message; el.hidden=false;} else toast(er.message,'bad'); } };
-      $('[data-theme-toggle]',root).onclick=()=>{ const cur = document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches); const t=cur?'light':'dark'; document.documentElement.dataset.theme=t; try{localStorage.setItem('spidy_theme',t);}catch(er){} App.render(); };
+      $('[data-theme-toggle]',root).onclick=()=>{ const cur = document.documentElement.dataset.theme==='dark' || (!document.documentElement.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches); const t=cur?'light':'dark'; document.documentElement.dataset.theme=t; try{localStorage.setItem('autoreboot_theme',t);}catch(er){} App.render(); };
       $('[data-pw]',root).onclick=()=>openSheet(`<h3>Change password</h3><form data-pwf novalidate><div class="field"><label for="pw_o">Current password</label><input class="input" id="pw_o" type="password" name="old" autocomplete="current-password"><div class="err-msg" data-err="old" hidden></div></div><div class="field"><label for="pw_n">New password</label><input class="input" id="pw_n" type="password" name="new" autocomplete="new-password"><div class="err-msg" data-err="new" hidden></div></div><button class="btn btn-primary btn-block">Update password</button></form>`,
         (el,close)=>{ const f=$('[data-pwf]',el); f.onsubmit=async e=>{ e.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true); try{ await API.auth.changePassword(f.old.value, f.new.value); close(); toast('Password updated'); } catch(er){ const m=$(`[data-err="${er.field}"]`,f); if(m){m.textContent=er.message;m.hidden=false;} } }; });
       $('[data-export]',root).onclick=()=>{ const me2=API.meId(); const data={profile:API.auth.me(), listings:API.listings.querySync({sellerId:me2,status:'any'}).map(l=>({...l,photos:l.photos.length+' photos'})), favorites:API.favs.ids(), chats:API.chats.mine().map(c=>({...c, messages:API.chats.messages(c.id).map(m=>({from:m.senderId===me2?'me':'them', text:m.text, at:new Date(m.createdAt).toISOString()}))})), financeRequests:API.finance.mine()};
@@ -1839,7 +1839,7 @@ Views.auth = (_, q, mode='login', role='user') => {
     <g fill="#ECEFF3" opacity=".5">${[20,120,220,320,420,520].map(x=>`<rect x="${x}" y="270" width="50" height="4" rx="2"/>`).join('')}</g>
     <g transform="translate(-10 120) scale(1.05)">${VA.draw('trucks','tippers','#E9B21C',10)}</g><g transform="translate(250 112) scale(1.15)">${VA.draw('trucks','lorries','#E5194D',10)}</g></svg>`;
   return { bare:true, html: `<div class="auth">
-    <div class="auth-art"><a href="#/" class="brand-mark" style="position:relative"><span class="logo">${I('truck','sm')}</span>Spidy</a>
+    <div class="auth-art"><a href="#/" class="brand-mark" style="position:relative"><span class="logo">${I('truck','sm')}</span>Autoreboot</a>
       <h2>${isOwner?'Run the marketplace.':mode==='login'?'Welcome back to the yard.':'Buy and sell commercial vehicles with confidence.'}</h2><p>${isOwner?'Review listings, manage members and follow up on finance requests from the owner console.':'Trucks, tippers, tractors, buses and machines from verified sellers across India — with private chat and finance help built in.'}</p>${authScene}</div>
     <div class="auth-card">
       <a href="#/" class="link" style="color:var(--ink-2)">${I('back','xs')} Continue browsing</a>
@@ -1858,7 +1858,7 @@ Views.auth = (_, q, mode='login', role='user') => {
       ${isOwner ? `<p class="muted" style="font-size:13px;text-align:center;margin-top:14px">Owner accounts are created by the site administrator.</p>`
         : Store.demo ? `<div class="or">or</div>
       <button class="btn btn-outline btn-block" data-demo>${I('user','sm')} Try the demo account</button>
-      <p class="muted" style="font-size:13px;text-align:center;margin-top:10px">Demo: demo@spidy.in · demo1234</p>` : ''}
+      <p class="muted" style="font-size:13px;text-align:center;margin-top:10px">Demo: demo@autoreboot.in · demo1234</p>` : ''}
     </div></div>`,
   mount(root){
     $$('[data-mode]',root).forEach(b=>b.onclick=()=>go(`#/${b.dataset.mode}${next!=='#/'?'?next='+encodeURIComponent(next):''}`));
@@ -2077,7 +2077,7 @@ const App = {
     const root = $('#app'); v.mount && v.mount(root);
     this.refreshBadges();
     const t = $('.topbar h1', root)?.textContent || $('.auth-card h1', root)?.textContent;
-    document.title = (r.name==='home' ? 'Spidy · Commercial Vehicle Marketplace' : (t ? t + ' · Spidy' : 'Spidy'));
+    document.title = (r.name==='home' ? 'Autoreboot · Commercial Vehicle Marketplace' : (t ? t + ' · Autoreboot' : 'Autoreboot'));
   },
   refreshBadges(){
     const n = API.notify.unread(), m = API.chats.unreadTotal();
@@ -2101,7 +2101,7 @@ document.addEventListener('click', e => {
   if (back){ e.preventDefault(); if (history.length > 1 && App._navCount > 1) history.back(); else go(back.dataset.back); return; }
   if (e.target.closest('[data-drawer]')){
     const me = API.auth.me(); const ov = document.createElement('div'); ov.className='overlay'; ov.style.alignItems='stretch';
-    ov.innerHTML = `<div class="drawer"><div style="display:flex;align-items:center;gap:12px;padding:6px 8px 18px;border-bottom:1px solid var(--line);margin-bottom:10px">${avatar(me)}<div>${me?`<b>${esc(me.name)}</b><div class="muted" style="font-size:13px">${esc(me.email)}</div>`:`<b>Welcome to Spidy</b><div><a href="#/login" class="link">Log in or sign up</a></div>`}</div></div>
+    ov.innerHTML = `<div class="drawer"><div style="display:flex;align-items:center;gap:12px;padding:6px 8px 18px;border-bottom:1px solid var(--line);margin-bottom:10px">${avatar(me)}<div>${me?`<b>${esc(me.name)}</b><div class="muted" style="font-size:13px">${esc(me.email)}</div>`:`<b>Welcome to Autoreboot</b><div><a href="#/login" class="link">Log in or sign up</a></div>`}</div></div>
       ${(me && me.role==='owner' ? [['home','#/','Home'],['cart','#/buy','Browse vehicles'],['search','#/search','Search'],['gauge','#/owner','Owner dashboard']] : [['home','#/','Home'],['cart','#/buy','Buy a vehicle'],['tag','#/sell','Sell your vehicle'],['search','#/search','Search'],['heart','#/favorites','Saved vehicles'],['msg','#/messages','Messages'],['bell','#/notifications','Notifications'],['bank','#/profile/finance','Finance requests'],['user','#/profile','Profile']]).map(([i,h,n])=>`<a href="${h}">${I(i)} ${n}</a>`).join('')}
       <div style="border-top:1px solid var(--line);margin-top:10px;padding-top:10px">${CATS.map(c=>`<a href="#/c/${c.id}" style="font-weight:500;color:var(--ink-2)">${I(c.icon,'sm')} ${esc(c.name)}</a>`).join('')}</div></div>`;
     ov.onclick = ev => { if (ev.target===ov || ev.target.closest('a')) ov.remove(); };
@@ -2140,7 +2140,7 @@ a.stat{display:block}
 
 /* boot */
 (async function boot(){
-  try { const t = localStorage.getItem('spidy_theme'); if (t) document.documentElement.dataset.theme = t; } catch(e){}
+  try { const t = localStorage.getItem('autoreboot_theme'); if (t) document.documentElement.dataset.theme = t; } catch(e){}
   try { await Sync.pull(); }
   catch(e){
     $('#app').innerHTML = `<div class="wrap page">${emptyState('info','Cannot reach the server', e.message, `<button class="btn btn-primary" onclick="location.reload()">Try again</button>`)}</div>`;

@@ -13,9 +13,9 @@ if (owner) {
   console.log('│  Sign in at /#/owner/login — change it with: npm run create-owner');
   console.log('└────────────────────────────────────────────────────────\n');
 }
-if (demo && (await seedDemo())) console.log('Seeded demo listings and demo user (demo@spidy.in / demo1234).');
+if (demo && (await seedDemo())) console.log('Seeded demo listings and demo user (demo@autoreboot.in / demo1234).');
 
 purgeExpiredSessions();
 setInterval(purgeExpiredSessions, 3600_000).unref();
 
-createApp({ demo }).listen(PORT, () => console.log(`Spidy running on http://localhost:${PORT}`));
+createApp({ demo }).listen(PORT, () => console.log(`Autoreboot running on http://localhost:${PORT}`));

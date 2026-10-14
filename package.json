@@ -1,8 +1,8 @@
 {
-  "name": "spidy-marketplace",
+  "name": "autoreboot-marketplace",
   "version": "1.0.0",
   "private": true,
-  "description": "Spidy — full-stack commercial vehicle marketplace (Express + SQLite, owner & user sign-in)",
+  "description": "Autoreboot — full-stack commercial vehicle marketplace (Express + SQLite, owner & user sign-in)",
   "type": "module",
   "main": "server/index.js",
   "engines": { "node": ">=22.13" },

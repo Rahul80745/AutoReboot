@@ -5,7 +5,7 @@ import { db } from './db.js';
 const scrypt = promisify(crypto.scrypt);
 
 export const SESSION_TTL = 30 * 24 * 3600 * 1000;
-export const COOKIE = 'spidy_sid';
+export const COOKIE = 'autoreboot_sid';
 
 export const newSalt = () => crypto.randomBytes(16).toString('hex');
 

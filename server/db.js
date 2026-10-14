@@ -3,7 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_FIELDS } from './form-defaults.js';
 
-const file = process.env.DATABASE_FILE || path.join(process.cwd(), 'data', 'spidy.db');
+// keep using a database created before the rename (data/spidy.db) if that is all that exists
+const defaultFile = path.join(process.cwd(), 'data', 'autoreboot.db');
+const legacyFile = path.join(process.cwd(), 'data', 'spidy.db');
+const file = process.env.DATABASE_FILE || (!fs.existsSync(defaultFile) && fs.existsSync(legacyFile) ? legacyFile : defaultFile);
 if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
 
 export const db = new DatabaseSync(file);
@@ -162,6 +165,11 @@ export function ensureFormFields() {
     if (!have.has(f.key)) ins.run(f.key, f.label, f.type, f.group, f.required ? 1 : 0, f.locked ? 1 : 0, f.placeholder, JSON.stringify(f.options), (i + 1) * 10);
   });
 }
+
+// rename of the brand: move seeded/owner e-mail addresses from the old domain
+db.exec(`UPDATE users SET email = replace(email, '@spidy.in', '@autoreboot.in') WHERE email LIKE '%@spidy.in'
+  AND NOT EXISTS (SELECT 1 FROM users x WHERE x.email = replace(users.email, '@spidy.in', '@autoreboot.in'))`);
+db.exec(`UPDATE users SET email = replace(email, '@seller.spidy.in', '@seller.autoreboot.in') WHERE email LIKE '%@seller.spidy.in'`);
 
 /** Run fn inside a transaction (rolls back if it throws). */
 export function tx(fn) {

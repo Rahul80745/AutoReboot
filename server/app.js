@@ -202,7 +202,7 @@ export function createApp({ demo = true } = {}) {
     db.prepare(`INSERT INTO users (id,role,name,email,phone,salt,pass_hash,city,state,color,created_at,last_login)
                 VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(id, name, email, phone, salt, hash, str(req.body.city, 80), state, AVATAR_COLORS[count % AVATAR_COLORS.length], Date.now(), Date.now());
-    notify(id, { title: 'Welcome to Spidy', body: 'Your account is ready. Browse verified commercial vehicles or list your own.', link: '#/', icon: 'sparkle' });
+    notify(id, { title: 'Welcome to Autoreboot', body: 'Your account is ready. Browse verified commercial vehicles or list your own.', link: '#/', icon: 'sparkle' });
     setSessionCookie(req, res, createSession(id));
     res.status(201).json({ user: userRow(db.prepare('SELECT * FROM users WHERE id = ?').get(id)) });
   }));
@@ -328,7 +328,7 @@ export function createApp({ demo = true } = {}) {
 
   api.patch('/listings/:id', needUser, wrap(async (req, res) => {
     const cur = ownListing(req);
-    if (cur.status === 'removed') throw new HttpError(403, 'This listing was removed by the Spidy team');
+    if (cur.status === 'removed') throw new HttpError(403, 'This listing was removed by the Autoreboot team');
     const prev = listingRow(cur);
     const v = validateListing({ ...prev, ...req.body }, allFormFields(), prev);
     db.prepare(`UPDATE listings SET ${L_COLS.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...lVals(v), Date.now(), cur.id);
@@ -337,7 +337,7 @@ export function createApp({ demo = true } = {}) {
 
   api.post('/listings/:id/status', needUser, wrap(async (req, res) => {
     const cur = ownListing(req);
-    if (cur.status === 'removed') throw new HttpError(403, 'This listing was removed by the Spidy team');
+    if (cur.status === 'removed') throw new HttpError(403, 'This listing was removed by the Autoreboot team');
     if (!['active', 'sold'].includes(req.body.status)) throw bad('Invalid status');
     db.prepare('UPDATE listings SET status = ?, updated_at = ? WHERE id = ?').run(req.body.status, Date.now(), cur.id);
     res.json({ listing: listingRow(db.prepare('SELECT * FROM listings WHERE id = ?').get(cur.id)) });
@@ -528,7 +528,7 @@ export function createApp({ demo = true } = {}) {
     const seller = db.prepare('SELECT id,is_bot FROM users WHERE id = ?').get(l.seller_id);
     if (seller && !seller.is_bot && req.body.status !== l.status && (req.body.status === 'removed' || l.status === 'removed')) {
       notify(l.seller_id, req.body.status === 'removed'
-        ? { title: 'Listing removed', body: `${l.title} (${l.id}) was removed by the Spidy team because it did not meet our listing guidelines.`, link: '#/profile', icon: 'info' }
+        ? { title: 'Listing removed', body: `${l.title} (${l.id}) was removed by the Autoreboot team because it did not meet our listing guidelines.`, link: '#/profile', icon: 'info' }
         : { title: 'Listing restored', body: `${l.title} (${l.id}) is visible to buyers again.`, link: '#/v/' + l.id, icon: 'checkCircle' });
     }
     res.json({ ok: true });

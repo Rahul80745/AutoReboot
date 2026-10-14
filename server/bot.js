@@ -24,7 +24,7 @@ const ART_VIEWS = ['side','flip','rear','interior','cab','dusk'];
     if (/(price|final|negotiable|last|best|discount|rate|cost)/.test(t)) return {text:`The price is ${inr(l.price)} and ${l.negotiable?'slightly negotiable':'fixed'}.\nYou can come and check the vehicle.`};
     if (/(km|kilomet|driven|run|hours|hrs)/.test(t)) return {text:`It has done ${usageFmt(l)}. Mostly ${HOURS_CATS.includes(l.category)?'light farm and site work':'highway running'}, no major repairs.`};
     if (/(paper|document|rc|insurance|permit|fitness|noc|tax)/.test(t)) return {text:'All papers are clear and up to date — RC, insurance, fitness and permit. NOC can be arranged for transfer.'};
-    if (/(loan|finance|emi)/.test(t)) return {text:'Yes, loan is possible on this vehicle. Tap "Check Finance Options" on the listing and the Spidy team will help you with the best offers.'};
+    if (/(loan|finance|emi)/.test(t)) return {text:'Yes, loan is possible on this vehicle. Tap "Check Finance Options" on the listing and the Autoreboot team will help you with the best offers.'};
     if (/(visit|tomorrow|come|location|address|where|see)/.test(t)) return {text:`Sure, you're welcome. The vehicle is at our yard in ${l.city}. Message me here before you leave and I'll share the exact location.`};
     if (/(tyre|tire)/.test(t)) return {text:`${l.tyres ? l.tyres+' tyres, ' : ''}${(l.highlights||[]).includes('New Tyres')?'all recently replaced.':'in good condition with plenty of life left.'}`};
     if (/(owner|ownership)/.test(t)) return {text:`It is a ${l.ownership.toLowerCase()} vehicle.`};

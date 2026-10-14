@@ -5,7 +5,7 @@ import { buildDemoListings } from './seed-listings.js';
 
 const OWNER_COLOR = '#0F172A';
 
-export async function createOwner({ email, password, name = 'Spidy Owner' }) {
+export async function createOwner({ email, password, name = 'Autoreboot Owner' }) {
   email = email.trim().toLowerCase();
   const salt = newSalt();
   const hash = await hashPassword(password, salt);
@@ -23,12 +23,12 @@ export async function createOwner({ email, password, name = 'Spidy Owner' }) {
 /** Make sure at least one owner account exists. Returns a message to print on first creation. */
 export async function ensureOwner() {
   if (db.prepare("SELECT 1 FROM users WHERE role = 'owner' LIMIT 1").get()) return null;
-  const email = (process.env.OWNER_EMAIL || 'owner@spidy.in').trim().toLowerCase();
+  const email = (process.env.OWNER_EMAIL || 'owner@autoreboot.in').trim().toLowerCase();
   let password = process.env.OWNER_PASSWORD;
   let generated = false;
   if (!password) { password = crypto.randomBytes(9).toString('base64url'); generated = true; }
   if (password.length < 8) throw new Error('OWNER_PASSWORD must be at least 8 characters');
-  await createOwner({ email, password, name: process.env.OWNER_NAME || 'Spidy Owner' });
+  await createOwner({ email, password, name: process.env.OWNER_NAME || 'Autoreboot Owner' });
   return { email, password: generated ? password : null };
 }
 
@@ -57,9 +57,9 @@ export async function seedDemo() {
       (id,role,name,email,phone,salt,pass_hash,city,state,business,color,verified,rating,reviews,is_bot,created_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     SELLERS.forEach(([id, name, city, state, since, rating, reviews], i) => {
-      addUser.run(id, 'user', name, `${id}@seller.spidy.in`, '90000000' + String(i).padStart(2, '0'), '', '!', city, state, name, COLORS[i], 1, rating, reviews, 1, since.getTime());
+      addUser.run(id, 'user', name, `${id}@seller.autoreboot.in`, '90000000' + String(i).padStart(2, '0'), '', '!', city, state, name, COLORS[i], 1, rating, reviews, 1, since.getTime());
     });
-    addUser.run('u_demo', 'user', 'Arjun Reddy', 'demo@spidy.in', '9876543210', demoSalt, demoHash, 'Hyderabad', 'Telangana', 'Reddy Builders', '#2563EB', 1, 4.9, 12, 0, new Date(2024, 0, 15).getTime());
+    addUser.run('u_demo', 'user', 'Arjun Reddy', 'demo@autoreboot.in', '9876543210', demoSalt, demoHash, 'Hyderabad', 'Telangana', 'Reddy Builders', '#2563EB', 1, 4.9, 12, 0, new Date(2024, 0, 15).getTime());
 
     const addListing = db.prepare(`INSERT INTO listings
       (id,seller_id,category,subtype,brand,model,title,year,tyres,emission,fuel,transmission,km,engine,power,load,ownership,reg_no,body,city,state,price,negotiable,description,highlights,color,photos,status,views,created_at,updated_at)
