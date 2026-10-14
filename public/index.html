@@ -1653,6 +1653,7 @@ Views.sell = ({id}) => {
     : f.key==='load' && f.label==='Load capacity' && d.category==='buses' ? 'Seating' : f.label;
   const phOf = f => {
     if (f.placeholder) return f.placeholder; const sp = spec(), y = new Date().getFullYear();
+    if (f.key==='title') return d.brand && d.model ? `${d.brand} ${d.model} – e.g. single owner, new tyres` : 'e.g. Tata LPT 1613 in excellent condition';
     return {year:String(y-3), km:isHours()?'e.g. 2400':'e.g. 85000', regNo:'e.g. TS 07 UF 1234', engine:sp.engine, power:sp.power, load:sp.load, body:sp.body, price:'e.g. 1250000', city:'e.g. Khammam'}[f.key] || '';
   };
   const REQ = ' <span style="color:var(--primary)">*</span>';
@@ -1672,6 +1673,7 @@ Views.sell = ({id}) => {
         let extra = ''; let dl = '';
         if (f.key==='model'){ const series = (brandsFor(d.category, d.subtype||'lorries').find(b=>b[0]===d.brand)||[])[1]; extra = 'list="models"'; dl = `<datalist id="models">${(series||'').split(',').filter(Boolean).map(s=>`<option value="${esc(s)}">`).join('')}</datalist>`; }
         if (f.key==='regNo') extra = 'style="text-transform:uppercase"';
+        if (f.key==='title') extra = 'maxlength="100"';
         return field(f, `<input class="input" id="s_${f.key}" data-fk="${f.key}" type="text" placeholder="${esc(f.key==='model' && !f.placeholder ? 'e.g. LPT 1613' : phOf(f))}" value="${esc(v)}" ${extra}>${dl}`);
       }
       case 'number': return field(f, `<input class="input" id="s_${f.key}" data-fk="${f.key}" type="number" inputmode="numeric" placeholder="${esc(phOf(f))}" value="${esc(v)}" min="0">`) + (f.key==='price' ? `<div class="muted" style="font-size:13px;grid-column:1/-1;margin-top:-6px" data-pricehint>${+d.price?`Shown as ${inr(d.price)} (${inrShort(+d.price)})`:''}</div>` : '');
@@ -1696,9 +1698,6 @@ Views.sell = ({id}) => {
         <div class="photos">${d.photos.map((p,i)=>`<div class="ph"><img src="${p}" alt="Photo ${i+1}"><button type="button" data-rmph="${i}" aria-label="Remove photo">${I('x','xs')}</button>${i===0?'<span class="cover">Cover</span>':`<button type="button" data-cover="${i}" style="left:6px;right:auto;top:auto;bottom:6px;width:auto;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;height:22px">Make cover</button>`}</div>`).join('')}
         ${d.photos.length<8?`<label class="add">${I('camera','lg')}Add photos<input type="file" accept="image/*" multiple hidden data-photos></label>`:''}</div>
         <div data-uploading class="muted" style="font-size:13px;margin-top:8px" hidden>Processing photos…</div><div class="err-msg" data-err="photos" hidden></div></div>`;
-      case 'color': return d.photos.length ? '' : `<div class="card" style="padding:16px;grid-column:1/-1"><b style="display:block;margin-bottom:4px">No photos yet?</b><p class="muted" style="margin:0 0 12px;font-size:14px">We'll show an illustration of your vehicle until you add photos. Pick the closest body colour.</p>
-        <div class="swatches">${SWATCHES.map(c=>`<button type="button" data-color="${c}" class="${d.color===c?'on':''}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>
-        <div class="preview-wrap" style="margin-top:14px">${VA.scene(VA.draw(d.category, d.subtype, d.color, +d.tyres||6))}</div></div>`;
     }
     return '';
   }
@@ -1708,7 +1707,7 @@ Views.sell = ({id}) => {
     for (const f of fieldsOn()){
       const v = getV(f);
       const empty = f.type==='checks' ? !d.highlights.length : f.type==='photos' ? !d.photos.length : f.type==='tyres' ? (!+d.tyres && !isHours()) : (v===''||v==null);
-      if (f.required && f.type!=='toggle' && f.type!=='color' && empty) err(f.key, `${labelOf(f)} is required`);
+      if (f.required && f.type!=='toggle' && empty) err(f.key, `${labelOf(f)} is required`);
     }
     const y = new Date().getFullYear();
     if (!(+d.year>=1990 && +d.year<=y)) err('year', `Enter a year between 1990 and ${y}`);
@@ -1747,7 +1746,6 @@ Views.sell = ({id}) => {
       });
       $$('[data-tg]',box).forEach(b => b.onclick = () => { const f = fieldByKey(b.dataset.tg); const on = !getV(f); setV(f, on); $('.toggle',b).classList.toggle('on', on); saveDraft(); });
       $$('[data-hl]',box).forEach(c => c.onchange = () => { const s = new Set(d.highlights); c.checked ? s.add(c.dataset.hl) : s.delete(c.dataset.hl); d.highlights = [...s]; saveDraft(); });
-      $$('[data-color]',box).forEach(b => b.onclick = () => { d.color = b.dataset.color; saveDraft(); draw(); });
       $$('[data-rmph]',box).forEach(b => b.onclick = () => { d.photos.splice(+b.dataset.rmph,1); draw(); });
       $$('[data-cover]',box).forEach(b => b.onclick = () => { const [p] = d.photos.splice(+b.dataset.cover,1); d.photos.unshift(p); draw(); });
       const ph = $('[data-photos]',box); if (ph) ph.onchange = async e => { $('[data-uploading]',box).hidden = false;

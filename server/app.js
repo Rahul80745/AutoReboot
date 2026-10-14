@@ -115,7 +115,11 @@ function validateListing(d, fields, prev = null) {
     if (f.enabled && f.required && f.type !== 'toggle' && v === undefined) throw bad(`${f.label} is required`, f.key);
     if (v !== undefined) out.extras[f.key] = v;
   }
-  out.title = `${out.brand} ${out.model}`.replace(/^Tata Tata/, 'Tata');
+  // Ad title: shown as the listing's title. Falls back to "Brand Model" when optional and left empty.
+  const autoOf = (b, m) => `${b} ${m}`.replace(/^Tata Tata/, 'Tata');
+  const adTitle = str(d.title, 100);
+  required('title', !adTitle);
+  out.title = !adTitle || (prev && adTitle === prev.title && prev.title === autoOf(prev.brand, prev.model)) ? autoOf(out.brand, out.model) : adTitle;
   return out;
 }
 

@@ -28,7 +28,7 @@ function client() {
 }
 
 const newUser = { name: 'Ravi Kumar', email: 'ravi@example.com', phone: '9123456780', password: 'secret123', city: 'Pune', state: 'Maharashtra' };
-const vehicle = { category: 'mini-trucks', brand: 'Tata', model: 'Ace Gold', year: 2022, price: 450000, km: 20000, tyres: 4, city: 'Pune', state: 'Maharashtra' };
+const vehicle = { category: 'mini-trucks', brand: 'Tata', model: 'Ace Gold', title: 'Tata Ace Gold', year: 2022, price: 450000, km: 20000, tyres: 4, city: 'Pune', state: 'Maharashtra' };
 
 test('anonymous visitors can browse but not act', async () => {
   const c = client();
@@ -230,4 +230,22 @@ test('owner controls the sell form: add, require, hide, reorder, delete fields',
   // deleting the custom field stops requiring it
   assert.equal((await o('DELETE', `/api/owner/form-fields/${custom.key}`)).status, 200);
   assert.equal((await u('POST', '/api/listings', base)).status, 201);
+});
+
+test('ad title becomes the listing title', async () => {
+  const u = client(), o = client();
+  await u('POST', '/api/auth/register', { ...newUser, email: 'title@example.com', phone: '9567891234' });
+  const { title, ...noTitle } = vehicle;
+  assert.equal((await u('POST', '/api/listings', noTitle)).data.field, 'title'); // required by default
+  const made = await u('POST', '/api/listings', { ...vehicle, title: 'Single-owner Ace, new tyres' });
+  assert.equal(made.data.listing.title, 'Single-owner Ace, new tyres');
+  const id = made.data.listing.id;
+  assert.equal((await u('PATCH', `/api/listings/${id}`, { title: 'Ace Gold – price cut' })).data.listing.title, 'Ace Gold – price cut');
+  // owner makes it optional → falls back to Brand + Model
+  await o('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'owner' });
+  await o('PATCH', '/api/owner/form-fields/title', { required: false });
+  assert.equal((await u('POST', '/api/listings', noTitle)).data.listing.title, 'Tata Ace Gold');
+  await o('PATCH', '/api/owner/form-fields/title', { required: true });
+  // colour picker field is gone
+  assert.ok(!(await u('GET', '/api/bootstrap')).data.formFields.some((f) => f.key === 'color'));
 });
