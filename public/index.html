@@ -906,7 +906,7 @@ const SWATCHES = ['#F3F4F7','#1F5FD1','#E9B21C','#D63A2F','#1BA39C','#E2541B','#
    that is hydrated from /api/bootstrap and polled, so views can stay synchronous. */
 class ApiError extends Error { constructor(msg, field){ super(msg); this.field = field; } }
 
-const Store = { ready:false, me:null, demo:false, formFields:[], banners:[], users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
+const Store = { ready:false, me:null, demo:false, formFields:[], banners:[], googleClientId:'', users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
 const serverNow = () => Date.now() + Store.skew;
 
 async function http(method, url, body){
@@ -927,7 +927,8 @@ const Sync = {
   /* merge a /api/bootstrap payload into the cache; returns what changed so the UI can refresh */
   apply(d){
     const prevMe = Store.me && Store.me.id, prevMsgs = Store.messages.length, prevNoti = Store.notifications.length, prevChats = Store.chats.length;
-    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.banners = d.banners || []; Store.demo = !!d.demo; Store.me = d.user;
+    const prevReads = Store.chats.reduce((s,c) => s + (c.otherRead||0), 0);
+    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.banners = d.banners || []; Store.googleClientId = d.googleClientId || ''; Store.demo = !!d.demo; Store.me = d.user;
     Store.users = {}; (d.users||[]).forEach(u => Store.users[u.id] = u);
     const keep = new Set(d.listingIds), byId = new Map(Store.listings.filter(l => keep.has(l.id)).map(l => [l.id, l]));
     d.listings.forEach(l => { const old = byId.get(l.id); byId.set(l.id, old ? {...l, views:Math.max(l.views, old.views||0)} : l); });
@@ -938,10 +939,15 @@ const Sync = {
     (d.messages||[]).forEach(m => { msgs.set(m.id, m); if (m.createdAt > Store.ms) Store.ms = m.createdAt; });
     Store.messages = [...msgs.values()];
     Store.ready = true;
-    return { signedOut: !!prevMe && !Store.me, newMsgs: Store.messages.length !== prevMsgs, newNoti: Store.notifications.length !== prevNoti, chatsChanged: Store.chats.length !== prevChats };
+    Realtime.sync();
+    const readChanged = Store.chats.reduce((s,c) => s + (c.otherRead||0), 0) !== prevReads;
+    if (Store.messages.length !== prevMsgs) Object.keys(API.chats.typing).forEach(k => { API.chats.typing[k] = false; }); // a message arrived: they stopped typing
+    return { signedOut: !!prevMe && !Store.me, readChanged, newMsgs: Store.messages.length !== prevMsgs, newNoti: Store.notifications.length !== prevNoti, chatsChanged: Store.chats.length !== prevChats };
   },
   pull(){
-    if (!this.inflight) this.inflight = http('GET', `/api/bootstrap?ls=${Store.ls}&ms=${Store.ms}`).then(d => { const ch = this.apply(d); this.ui(ch); return ch; }).finally(() => { this.inflight = null; });
+    if (this.inflight){ this.again = true; return this.inflight; }
+    this.inflight = http('GET', `/api/bootstrap?ls=${Store.ls}&ms=${Store.ms}`).then(d => { const ch = this.apply(d); this.ui(ch); return ch; })
+      .finally(() => { this.inflight = null; if (this.again){ this.again = false; this.pull().catch(()=>{}); } });
     return this.inflight;
   },
   async reset(){ Store.ls = 0; Store.ms = 0; Store.listings = []; Store.messages = []; try { await this.pull(); } catch(e){} },
@@ -950,9 +956,28 @@ const Sync = {
     if (ch.signedOut){ toast('You have been signed out','bad'); App.render(); return; }
     App.refreshBadges();
     const h = location.hash;
-    if (ch.newMsgs && h.startsWith('#/chat/') && App.chatDraw) App.chatDraw();
+    if ((ch.newMsgs || ch.readChanged) && h.startsWith('#/chat/') && App.chatDraw) App.chatDraw();
     else if ((ch.newMsgs || ch.newNoti || ch.chatsChanged) && (h === '#/messages' || h === '#/notifications')) App.render();
   },
+};
+
+/* Realtime: a Server-Sent Events stream tells us the instant something arrives, so chat is live. */
+const Realtime = {
+  es:null, up:false, timers:{},
+  sync(){ const want = !!Store.me && Store.me.role === 'user'; if (want && !this.es) this.open(); else if (!want && this.es) this.close(); },
+  open(){
+    if (!window.EventSource) return;
+    const es = this.es = new EventSource('/api/events');
+    es.addEventListener('hello', () => { this.up = true; Sync.pull().catch(()=>{}); });
+    es.addEventListener('sync', () => { Sync.pull().catch(()=>{}); });
+    es.addEventListener('typing', e => {
+      let id; try { id = JSON.parse(e.data).chatId; } catch(er){ return; }
+      API.chats.typing[id] = true; App.onChatEvent(id);
+      clearTimeout(this.timers[id]); this.timers[id] = setTimeout(() => { API.chats.typing[id] = false; App.onChatEvent(id); }, 3500);
+    });
+    es.onerror = () => { this.up = false; }; // the browser reconnects by itself; polling covers the gap
+  },
+  close(){ if (this.es){ this.es.close(); this.es = null; this.up = false; } },
 };
 
 const API = (() => {
@@ -967,6 +992,7 @@ const API = (() => {
     isOwner: () => !!Store.me && Store.me.role === 'owner',
     async register(d){ const r = await http('POST', '/api/auth/register', d); await Sync.reset(); return r.user; },
     async login({id, password, as}){ const r = await http('POST', '/api/auth/login', {id, password, as}); await Sync.reset(); return r.user; },
+    async google(credential){ const r = await http('POST', '/api/auth/google', {credential}); await Sync.reset(); return r.user; },
     async demo(){ return auth.login({id:'demo@autoreboot.in', password:'demo1234', as:'user'}); },
     async logout(){ try { await http('POST', '/api/auth/logout'); } catch(e){} Store.me = null; await Sync.reset(); },
     async update(patch){ const r = await http('PATCH', '/api/auth/me', patch); await Sync.pull(); return r.user; },
@@ -1513,11 +1539,12 @@ Views.chat = ({id}) => {
     const body = $('[data-body]', root); let pending = [];
     const draw = () => {
       const msgs = API.chats.messages(id); let lastDay = ''; let h = '';
+      const oRead = (API.chats.get(id)||{}).otherRead || 0;
       if (!msgs.length) h = `<div class="empty" style="padding:30px"><p>Say hello and ask about the vehicle. Your number stays hidden.</p></div>`;
       msgs.forEach(m => {
         const d = dayLabel(m.createdAt); if (d!==lastDay){ h+=`<div class="day">${d}</div>`; lastDay=d; }
         const mine = m.senderId===me; const u = mine ? null : other;
-        h += `<div class="msg-row ${mine?'me':''}">${mine?'':avatar(u)}<div class="bubble">${m.images&&m.images.length?`<div class="imgs">${m.images.map((r,k)=>`<button data-img="${m.id}:${k}">${renderImg(r)}</button>`).join('')}</div>`:''}${m.text?esc(m.text):''}<div class="time">${clock(m.createdAt)}${mine?I('checks','xs'):''}</div></div></div>`;
+        h += `<div class="msg-row ${mine?'me':''}">${mine?'':avatar(u)}<div class="bubble">${m.images&&m.images.length?`<div class="imgs">${m.images.map((r,k)=>`<button data-img="${m.id}:${k}">${renderImg(r)}</button>`).join('')}</div>`:''}${m.text?esc(m.text):''}<div class="time">${clock(m.createdAt)}${mine?`<span class="tick ${m.createdAt <= oRead ? 'seen' : ''}" title="${m.createdAt <= oRead ? 'Seen' : 'Delivered'}">${I('checks','xs')}</span>`:''}</div></div></div>`;
       });
       if (API.chats.typing[id]) h += `<div class="msg-row">${avatar(other)}<div class="bubble"><span class="typing"><i></i><i></i><i></i></span></div></div>`;
       body.innerHTML = h; body.scrollTop = body.scrollHeight;
@@ -1527,6 +1554,8 @@ Views.chat = ({id}) => {
     App.chatDraw = draw; App.cleanup.push(()=>{ App.chatDraw=null; });
     draw();
     const input = $('[data-input]',root);
+    let lastTyping = 0;
+    if (!other.isBot) input.addEventListener('input', () => { const t = Date.now(); if (input.value && t - lastTyping > 2500){ lastTyping = t; http('POST', `/api/chats/${encodeURIComponent(id)}/typing`).catch(()=>{}); } });
     const drawPending = () => { $('[data-pending]',root).innerHTML = pending.map((p,k)=>`<div><img src="${p}" alt=""><button type="button" data-rm="${k}" aria-label="Remove">${I('x','xs')}</button></div>`).join(''); $$('[data-rm]',root).forEach(b=>b.onclick=()=>{pending.splice(+b.dataset.rm,1);drawPending();}); };
     const send = async text => {
       try { await API.chats.send(id, {text, images:pending}); pending=[]; drawPending(); input.value=''; draw(); }
@@ -1844,6 +1873,13 @@ Views.notifications = () => {
 };
 
 /* ---- auth ---- */
+let _gsi;
+const loadGoogle = () => _gsi || (_gsi = new Promise((res, rej) => {
+  if (window.google && google.accounts && google.accounts.id) return res();
+  const s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+  s.onload = res; s.onerror = () => { _gsi = null; rej(new Error('Google script blocked')); }; document.head.appendChild(s);
+}));
+
 Views.auth = (_, q, mode='login', role='user') => {
   const isOwner = role==='owner';
   const next = q.get('next') || (isOwner ? '#/owner' : '#/');
@@ -1857,6 +1893,7 @@ Views.auth = (_, q, mode='login', role='user') => {
       <a href="#/" class="link" style="color:var(--ink-2)">${I('back','xs')} Continue browsing</a>
       <h1>${isOwner?'Owner sign in':mode==='login'?'Log in':'Create your account'}</h1><p class="muted" style="margin:0">${isOwner?'Restricted to the marketplace owner.':mode==='login'?'Chat with sellers, save vehicles and request finance.':'It takes less than a minute.'}</p>
       ${isOwner?'':`<div class="tabs" role="tablist"><button class="${mode==='login'?'on':''}" data-mode="login" role="tab">Log in</button><button class="${mode==='signup'?'on':''}" data-mode="signup" role="tab">Sign up</button></div>`}
+      ${!isOwner && Store.googleClientId ? `<div data-google style="display:flex;justify-content:center;min-height:44px"></div><div class="or">or use email</div>` : ''}
       <form data-auth novalidate>
         ${mode==='signup'&&!isOwner?`<div class="field"><label for="a_name">Full name</label><input class="input" id="a_name" name="name" autocomplete="name" placeholder="e.g. Ravi Kumar"><div class="err-msg" data-err="name" hidden></div></div>
           <div class="field"><label for="a_email">Email</label><input class="input" id="a_email" name="email" type="email" autocomplete="email" placeholder="you@example.com"><div class="err-msg" data-err="email" hidden></div></div>
@@ -1883,6 +1920,11 @@ Views.auth = (_, q, mode='login', role='user') => {
       try { const data=Object.fromEntries(new FormData(form)); done(mode==='login' ? await API.auth.login({...data, as: role}) : await API.auth.register(data)); }
       catch(er){ btn.disabled=false; btn.textContent=label; const el=$(`[data-err="${er.field}"]`,form); if(el){ el.textContent=er.message; el.hidden=false; form[er.field]?.classList.add('err'); form[er.field]?.focus(); } else toast(er.message,'bad'); }
     };
+    const gbox = $('[data-google]',root);
+    if (gbox) loadGoogle().then(() => {
+      google.accounts.id.initialize({client_id:Store.googleClientId, callback: async r => { try { done(await API.auth.google(r.credential)); } catch(er){ toast(er.message,'bad'); } }});
+      google.accounts.id.renderButton(gbox, {theme:'outline', size:'large', shape:'pill', width:Math.min(380, gbox.clientWidth || 340), text: mode==='signup' ? 'signup_with' : 'continue_with', logo_alignment:'left'});
+    }).catch(() => { gbox.innerHTML = '<span class="muted" style="font-size:13px">Google sign-in is unavailable right now.</span>'; });
     const demoBtn = $('[data-demo]',root); if (demoBtn) demoBtn.onclick = async e => { e.currentTarget.disabled=true; try { done(await API.auth.demo()); } catch(er){ toast(er.message,'bad'); e.currentTarget.disabled=false; } };
     $(mode==='login'||isOwner?'#a_id':'#a_name',root).focus();
   }};
@@ -2188,6 +2230,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 
 @media (max-width:959px){ .is-chat .chat-page{height:calc(100dvh - 64px)} }
 a.stat{display:block}
+.tick{opacity:.55;display:inline-flex}.tick.seen{opacity:1;color:#2563EB}
 .chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
 .role-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 18px}.role-switch+.tabs{margin-top:-4px}
 .role-switch a{display:flex;align-items:center;justify-content:center;gap:6px;height:44px;border:1px solid var(--line);border-radius:12px;font-weight:700;color:var(--ink-2)}
@@ -2210,7 +2253,8 @@ a.stat{display:block}
   }
   if (!location.hash) location.replace('#/');
   App.started = true; App.render();
-  setInterval(() => { if (!document.hidden) Sync.pull().catch(()=>{}); }, 6000);
+  setInterval(() => { if (!document.hidden && !Realtime.up) Sync.pull().catch(()=>{}); }, 6000);
+  setInterval(() => { if (!document.hidden) Sync.pull().catch(()=>{}); }, 45000); // safety net even when the live stream is up
   document.addEventListener('visibilitychange', () => { if (!document.hidden) Sync.pull().catch(()=>{}); });
 })();
 </script>

@@ -21,8 +21,10 @@ export async function createOwner({ email, password, name = 'Autoreboot Owner' }
 }
 
 /** Make sure at least one owner account exists. Returns a message to print on first creation. */
-export async function ensureOwner() {
+export async function ensureOwner({ requirePassword = false } = {}) {
   if (db.prepare("SELECT 1 FROM users WHERE role = 'owner' LIMIT 1").get()) return null;
+  // In production never invent a password and print it into shared logs: the operator must provide one.
+  if (requirePassword && !process.env.OWNER_PASSWORD) throw new Error('no owner exists yet. Set OWNER_EMAIL and OWNER_PASSWORD (8+ characters) in the environment and redeploy.');
   const email = (process.env.OWNER_EMAIL || 'owner@autoreboot.in').trim().toLowerCase();
   let password = process.env.OWNER_PASSWORD;
   let generated = false;

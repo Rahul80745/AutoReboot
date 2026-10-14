@@ -55,6 +55,40 @@ server-side and sent in an `HttpOnly; SameSite=Lax` cookie (`Secure` over HTTPS 
 behind a proxy); login endpoints are rate limited; mutating requests must be same-origin JSON; every
 write checks role and ownership on the server; uploaded images are validated as data-URL images with size caps.
 
+## Deploy to Railway (recommended)
+
+1. **New Project → Deploy from GitHub repo** → pick `Rahul80745/AutoReboot` and the branch you want to deploy.
+   Railway builds the included `Dockerfile` (config in `railway.json`, health check `/healthz`).
+2. **Add a Volume** (service → *Settings → Volumes → New Volume*) mounted at `/data`.
+   The app detects `RAILWAY_VOLUME_MOUNT_PATH` and keeps its SQLite database there, so users, listings and chats
+   survive redeploys. Without a volume all data is lost on every deploy (the app logs a warning).
+3. **Variables** (service → *Variables*):
+
+   | Variable | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `OWNER_EMAIL` | your owner login email |
+   | `OWNER_PASSWORD` | a strong password, 8+ characters (**required in production**) |
+   | `GOOGLE_CLIENT_ID` | optional, enables “Continue with Google” (see below) |
+   | `SEED_DEMO` | optional, `true` to start with demo listings |
+
+4. **Generate a domain** (*Settings → Networking → Generate Domain*), open it, and the owner signs in at `/owner`.
+
+Only run **one replica**: SQLite and the in-memory live-chat streams belong to a single instance.
+
+### Continue with Google
+1. [Google Cloud Console](https://console.cloud.google.com/) → *APIs & Services → Credentials → Create credentials → OAuth client ID* → **Web application**.
+2. Add your site (for example `https://your-app.up.railway.app`, and `http://localhost:3000` for local testing) under **Authorized JavaScript origins**.
+3. Copy the **Client ID** into the `GOOGLE_CLIENT_ID` variable and redeploy. The Google button then appears on the login and sign-up pages.
+
+Google users are created as normal user accounts (matched to an existing account by verified e-mail). Owner accounts can never sign in through Google.
+
+### Production notes
+- **Live chat:** buyer ↔ seller messages are pushed instantly over a Server-Sent Events stream, with typing indicators and “seen” ticks; the page falls back to polling if the stream drops.
+- **Backups:** a consistent copy of the database is written daily to `backups/` next to the database file (last 7 kept; `BACKUP_KEEP`, `BACKUPS=false`).
+- **Security:** HSTS, CSP and other headers, hashed passwords and sessions, rate limits on login, messages and new listings, same-origin checks on writes, structured request logs, graceful shutdown on deploys.
+- **Logs** are JSON lines; the owner password is never printed in production.
+
 ## Deploy to Render
 
 **One click (Blueprint):** Render dashboard → **New → Blueprint** → select this repo and branch. Render reads

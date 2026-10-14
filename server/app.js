@@ -10,6 +10,8 @@ import {
   userForToken, parseCookies, setSessionCookie, clearSessionCookie, rateLimit,
 } from './security.js';
 import { scheduleBotReply } from './bot.js';
+import { subscribe, publish } from './realtime.js';
+import { verifyGoogleIdToken } from './google.js';
 import {
   CATEGORY_IDS, CAT_PREFIX, SPEC_DEFAULTS, STATES, subById,
 } from './catalog.js';
@@ -125,18 +127,34 @@ function validateListing(d, fields, prev = null) {
 }
 
 /* -------------------------------- app ---------------------------------- */
-export function createApp({ demo = true } = {}) {
+export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken } = {}) {
   ensureFormFields();
   const app = express();
   app.disable('x-powered-by');
-  if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+  // Behind a platform proxy (Railway, Render, …) the real client IP / protocol come from X-Forwarded-*.
+  const trustProxy = process.env.TRUST_PROXY ?? (process.env.RAILWAY_ENVIRONMENT ? 'true' : '');
+  if (trustProxy) app.set('trust proxy', trustProxy === 'true' ? 1 : trustProxy);
+  const isProd = process.env.NODE_ENV === 'production';
+
+  if (isProd) { // one JSON line per request for the platform's log viewer
+    app.use((req, res, next) => {
+      const t0 = process.hrtime.bigint(); const url = req.originalUrl.split('?')[0];
+      res.on('finish', () => {
+        if (url === '/healthz' || url === '/api/events') return;
+        console.log(JSON.stringify({ t: new Date().toISOString(), m: req.method, p: url, s: res.statusCode, ms: Math.round(Number(process.hrtime.bigint() - t0) / 1e6), ip: req.ip }));
+      });
+      next();
+    });
+  }
 
   app.use((req, res, next) => {
     res.set({
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'DENY',
       'Referrer-Policy': 'same-origin',
-      'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'",
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      ...(isProd && (req.secure || req.headers['x-forwarded-proto'] === 'https') ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
+      'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' https://accounts.google.com; frame-src https://accounts.google.com; connect-src 'self' https://accounts.google.com; frame-ancestors 'none'",
     });
     next();
   });
@@ -145,6 +163,8 @@ export function createApp({ demo = true } = {}) {
   // private entry point for the owner; it is not linked from anywhere in the public site
   app.get(['/owner', '/owner/'], (req, res) => res.redirect(302, '/#/owner/login'));
   app.use(express.json({ limit: '12mb' }));
+  // broad abuse guard on the whole API (the realtime stream and auth have their own limits)
+  app.use('/api', rateLimit({ windowMs: 60_000, max: 900, key: (req) => `api|${req.ip}`, message: 'Too many requests. Slow down and try again in a minute.' }));
 
   // CSRF defence in depth: state-changing API calls must be same-origin JSON.
   app.use('/api', (req, res, next) => {
@@ -229,6 +249,30 @@ export function createApp({ demo = true } = {}) {
     res.json({ user: userRow(u) });
   }));
 
+  // "Continue with Google": works for both sign-up (creates the account) and sign-in (finds / links it by verified e-mail)
+  api.post('/auth/google', authLimiter, wrap(async (req, res) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) throw new HttpError(503, 'Google sign-in is not set up on this site');
+    let g;
+    try { g = await googleVerifier(String(req.body.credential || ''), { clientId }); }
+    catch { throw new HttpError(401, 'Google sign-in failed. Please try again.'); }
+    let u = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(g.sub) || db.prepare('SELECT * FROM users WHERE email = ?').get(g.email);
+    if (u && (u.role !== 'user' || u.is_bot)) throw new HttpError(403, 'This account cannot sign in with Google');
+    if (u) {
+      if (u.status !== 'active') throw new HttpError(403, 'This account has been suspended. Contact support.');
+      if (!u.google_sub) db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(g.sub, u.id);
+      db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(Date.now(), u.id);
+    } else {
+      const id = uid('u_'); const count = db.prepare('SELECT COUNT(*) c FROM users').get().c; const now = Date.now();
+      db.prepare(`INSERT INTO users (id,role,name,email,phone,salt,pass_hash,color,verified,created_at,last_login,google_sub)
+                  VALUES (?, 'user', ?, ?, NULL, '', '!', ?, 0, ?, ?, ?)`).run(id, str(g.name, 80) || 'Autoreboot user', g.email, AVATAR_COLORS[count % AVATAR_COLORS.length], now, now, g.sub);
+      notify(id, { title: 'Welcome to Autoreboot', body: 'Your account is ready. Add your mobile number in Profile → Settings so buyers and our finance team can reach you.', link: '#/profile/settings', icon: 'sparkle' });
+      u = { id };
+    }
+    setSessionCookie(req, res, createSession(u.id));
+    res.json({ user: userRow(db.prepare('SELECT * FROM users WHERE id = ?').get(u.id)) });
+  }));
+
   api.post('/auth/logout', (req, res) => {
     destroySession(req.token);
     clearSessionCookie(res);
@@ -242,9 +286,9 @@ export function createApp({ demo = true } = {}) {
     if (b.name !== undefined) { set.name = str(b.name, 80); if (set.name.length < 2) throw bad('Enter your full name', 'name'); }
     if (b.phone !== undefined && u.role === 'user') {
       const p = String(b.phone).replace(/\D/g, '');
-      if (!PHONE_RE.test(p)) throw bad('Enter a valid 10 digit mobile number', 'phone');
-      if (db.prepare('SELECT 1 FROM users WHERE phone = ? AND id != ?').get(p, u.id)) throw bad('This mobile number is already registered', 'phone');
-      set.phone = p;
+      if (p && !PHONE_RE.test(p)) throw bad('Enter a valid 10 digit mobile number', 'phone');
+      if (p && db.prepare('SELECT 1 FROM users WHERE phone = ? AND id != ?').get(p, u.id)) throw bad('This mobile number is already registered', 'phone');
+      set.phone = p || null; // Google sign-ups start without a number
     }
     if (b.city !== undefined) set.city = str(b.city, 80);
     if (b.business !== undefined) set.business = str(b.business, 100);
@@ -278,11 +322,11 @@ export function createApp({ demo = true } = {}) {
     const changed = db.prepare(`SELECT l.* FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible} AND l.updated_at >= ?`)
       .all(meId, lsince).map(listingRow);
 
-    const out = { now: Date.now(), demo, user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields(), banners: publicBanners() };
+    const out = { now: Date.now(), demo, googleClientId: process.env.GOOGLE_CLIENT_ID || '', user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields(), banners: publicBanners() };
     const userIds = new Set(db.prepare(`SELECT DISTINCT l.seller_id id FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible}`).all(meId).map((r) => r.id));
     if (me && me.role === 'user') {
       const chats = db.prepare(`SELECT * FROM chats WHERE (buyer_id = ? AND buyer_hidden = 0) OR (seller_id = ? AND seller_hidden = 0) ORDER BY updated_at DESC`).all(meId, meId);
-      out.chats = chats.map((c) => ({ ...chatRow(c), lastRead: c.buyer_id === meId ? c.buyer_read : c.seller_read }));
+      out.chats = chats.map((c) => ({ ...chatRow(c), lastRead: c.buyer_id === meId ? c.buyer_read : c.seller_read, otherRead: c.buyer_id === meId ? c.seller_read : c.buyer_read }));
       const chatIds = chats.map((c) => c.id);
       out.messages = chatIds.length
         ? db.prepare(`SELECT * FROM messages WHERE chat_id IN (${chatIds.map(() => '?').join(',')}) AND created_at >= ? ORDER BY created_at`).all(...chatIds, msince).map(messageRow)
@@ -318,7 +362,8 @@ export function createApp({ demo = true } = {}) {
   const L_COLS = ['category', 'subtype', 'brand', 'model', 'title', 'year', 'tyres', 'emission', 'fuel', 'transmission', 'km', 'engine', 'power', 'load', 'ownership', 'reg_no', 'body', 'city', 'state', 'price', 'negotiable', 'description', 'highlights', 'color', 'photos', 'extras'];
   const lVals = (v) => [v.category, v.subtype, v.brand, v.model, v.title, v.year, v.tyres, v.emission, v.fuel, v.transmission, v.km, v.engine, v.power, v.load, v.ownership, v.regNo, v.body, v.city, v.state, v.price, v.negotiable, v.description, JSON.stringify(v.highlights), v.color, JSON.stringify(v.photos), JSON.stringify(v.extras)];
 
-  api.post('/listings', needUser, wrap(async (req, res) => {
+  const listingLimiter = rateLimit({ windowMs: 3600_000, max: 30, key: (req) => `lst|${req.user?.id || req.ip}`, message: 'You are posting too quickly. Please try again later.' });
+  api.post('/listings', needUser, listingLimiter, wrap(async (req, res) => {
     const v = validateListing(req.body, allFormFields());
     const id = nextListingId(v); const now = Date.now();
     db.prepare(`INSERT INTO listings (id,seller_id,${L_COLS.join(',')},status,views,created_at,updated_at) VALUES (?,?,${L_COLS.map(() => '?').join(',')},'active',0,?,?)`)
@@ -400,7 +445,8 @@ export function createApp({ demo = true } = {}) {
     res.json({ id: c.id });
   });
 
-  api.post('/chats/:id/messages', needUser, wrap(async (req, res) => {
+  const messageLimiter = rateLimit({ windowMs: 60_000, max: 60, key: (req) => `msg|${req.user?.id || req.ip}`, message: 'You are sending messages too fast. Wait a moment.' });
+  api.post('/chats/:id/messages', needUser, messageLimiter, wrap(async (req, res) => {
     const c = myChat(req);
     const text = String(req.body.text ?? '').trim();
     const images = cleanImages(req.body.images, 4);
@@ -414,8 +460,10 @@ export function createApp({ demo = true } = {}) {
       db.prepare('INSERT INTO messages (id,chat_id,sender_id,text,images,created_at) VALUES (?,?,?,?,?,?)').run(m.id, c.id, req.user.id, text, JSON.stringify(images), m.created_at);
       const mine = c.buyer_id === req.user.id ? 'buyer_read' : 'seller_read';
       db.prepare(`UPDATE chats SET updated_at = ?, ${mine} = ?, buyer_hidden = 0, seller_hidden = 0 WHERE id = ?`).run(m.created_at, m.created_at, c.id);
-      if (!otherUser.is_bot) notify(other, { title: `New message from ${req.user.name}`, body: text || 'Sent photos', link: '#/chat/' + c.id, icon: 'msg' });
+      if (otherUser.is_bot) db.prepare(`UPDATE chats SET ${c.buyer_id === req.user.id ? 'seller_read' : 'buyer_read'} = ? WHERE id = ?`).run(m.created_at, c.id);
+      else notify(other, { title: `New message from ${req.user.name}`, body: text || 'Sent photos', link: '#/chat/' + c.id, icon: 'msg' });
     });
+    publish(req.user.id, 'sync'); // keep the sender's other tabs / devices in step
     if (otherUser.is_bot) scheduleBotReply(c, { text, images });
     res.status(201).json({ message: messageRow(db.prepare('SELECT * FROM messages WHERE id = ?').get(m.id)) });
   }));
@@ -423,7 +471,23 @@ export function createApp({ demo = true } = {}) {
   api.post('/chats/:id/read', needUser, (req, res) => {
     const c = myChat(req);
     db.prepare(`UPDATE chats SET ${c.buyer_id === req.user.id ? 'buyer_read' : 'seller_read'} = ? WHERE id = ?`).run(Date.now(), c.id);
+    publish(c.buyer_id === req.user.id ? c.seller_id : c.buyer_id, 'sync'); // the other side sees "seen" ticks
     res.json({ ok: true });
+  });
+
+  // "typing…" indicator: ephemeral, never stored
+  api.post('/chats/:id/typing', needUser, rateLimit({ windowMs: 10_000, max: 8, key: (req) => `typ|${req.user?.id || req.ip}` }), (req, res) => {
+    const c = myChat(req);
+    publish(c.buyer_id === req.user.id ? c.seller_id : c.buyer_id, 'typing', { chatId: c.id });
+    res.json({ ok: true });
+  });
+
+  // realtime stream (Server-Sent Events): the browser re-syncs the moment something arrives
+  api.get('/events', needAuth, (req, res) => {
+    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    res.flushHeaders();
+    res.write('retry: 3000\nevent: hello\ndata: {}\n\n');
+    subscribe(req.user.id, res);
   });
 
   api.delete('/chats/:id', needUser, (req, res) => {
@@ -698,7 +762,10 @@ export function createApp({ demo = true } = {}) {
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));
 
   /* ------------------------------ static + errors ------------------------ */
-  app.use(express.static(path.join(here, '..', 'public'), { extensions: ['html'], index: 'index.html' }));
+  app.use(express.static(path.join(here, '..', 'public'), {
+    extensions: ['html'], index: 'index.html',
+    setHeaders: (res) => res.set('Cache-Control', 'no-cache'), // the whole app is one file; always revalidate so deploys show up
+  }));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {

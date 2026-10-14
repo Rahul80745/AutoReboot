@@ -2,11 +2,15 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_FIELDS } from './form-defaults.js';
+import { publish } from './realtime.js';
 
 // keep using a database created before the rename (data/spidy.db) if that is all that exists
 const defaultFile = path.join(process.cwd(), 'data', 'autoreboot.db');
 const legacyFile = path.join(process.cwd(), 'data', 'spidy.db');
-const file = process.env.DATABASE_FILE || (!fs.existsSync(defaultFile) && fs.existsSync(legacyFile) ? legacyFile : defaultFile);
+// Railway (and similar hosts) expose the attached volume path; keep the database there so it survives deploys.
+const volumeFile = process.env.RAILWAY_VOLUME_MOUNT_PATH ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, 'autoreboot.db') : null;
+const file = process.env.DATABASE_FILE || volumeFile || (!fs.existsSync(defaultFile) && fs.existsSync(legacyFile) ? legacyFile : defaultFile);
+export const dbPath = file;
 if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
 
 export const db = new DatabaseSync(file);
@@ -167,6 +171,8 @@ CREATE TABLE IF NOT EXISTS banners (
 `);
 
 // migrations for databases created by earlier versions
+if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'google_sub')) db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google ON users(google_sub) WHERE google_sub IS NOT NULL');
 if (!db.prepare('PRAGMA table_info(listings)').all().some((c) => c.name === 'extras')) {
   db.exec("ALTER TABLE listings ADD COLUMN extras TEXT NOT NULL DEFAULT '{}'");
 }
@@ -245,6 +251,7 @@ export const financeRow = (r) => r && ({
 export function notify(userId, n) {
   db.prepare('INSERT INTO notifications (id,user_id,title,body,link,icon,read,created_at) VALUES (?,?,?,?,?,?,0,?)')
     .run(uid('n_'), userId, n.title, n.body || '', n.link || '#/', n.icon || 'bell', Date.now());
+  publish(userId, 'sync'); // wake any open tab so the new notification / message shows instantly
   // keep the table bounded per user
   db.prepare(`DELETE FROM notifications WHERE user_id = ? AND id NOT IN
     (SELECT id FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 200)`).run(userId, userId);

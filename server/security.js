@@ -73,15 +73,15 @@ export function clearSessionCookie(res) {
 
 /** Tiny in-memory limiter for credential endpoints. */
 const hits = new Map();
-export function rateLimit({ windowMs, max }) {
+export function rateLimit({ windowMs, max, key: keyOf, message = 'Too many attempts. Please wait a few minutes and try again.' }) {
   return (req, res, next) => {
-    const key = `${req.ip}|${req.path}|${String(req.body?.id || req.body?.email || '').toLowerCase()}`;
+    const key = keyOf ? keyOf(req) : `${req.ip}|${req.path}|${String(req.body?.id || req.body?.email || '').toLowerCase()}`;
     const now = Date.now();
     const rec = hits.get(key);
     if (!rec || rec.reset < now) hits.set(key, { n: 1, reset: now + windowMs });
     else if (++rec.n > max) {
       res.set('Retry-After', String(Math.ceil((rec.reset - now) / 1000)));
-      return res.status(429).json({ error: 'Too many attempts. Please wait a few minutes and try again.' });
+      return res.status(429).json({ error: message });
     }
     next();
   };

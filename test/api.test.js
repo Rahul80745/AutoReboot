@@ -14,7 +14,7 @@ test.after(() => server.close());
 /** minimal cookie-jar client */
 function client() {
   let cookie = '';
-  return async (method, url, body) => {
+  const f = async (method, url, body) => {
     const res = await fetch(base + url, {
       method,
       headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
@@ -25,6 +25,8 @@ function client() {
     let data = null; try { data = await res.json(); } catch {}
     return { status: res.status, data };
   };
+  f.cookie = () => cookie;
+  return f;
 }
 
 const newUser = { name: 'Ravi Kumar', email: 'ravi@example.com', phone: '9123456780', password: 'secret123', city: 'Pune', state: 'Maharashtra' };
@@ -305,4 +307,124 @@ test('health check endpoint', async () => {
   const res = await fetch(base + '/healthz');
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { ok: true });
+});
+
+/* ---------------- Google sign-in (token verified with a locally generated key) ---------------- */
+test('continue with Google creates, links and protects accounts', async () => {
+  const crypto = await import('node:crypto');
+  const { verifyGoogleIdToken } = await import('../server/google.js');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'test-key' };
+  const getKeys = async () => [jwk];
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const mint = (claims, key = privateKey) => {
+    const body = `${b64({ alg: 'RS256', kid: 'test-key', typ: 'JWT' })}.${b64({ iss: 'https://accounts.google.com', aud: 'client-123', exp: Math.floor(Date.now() / 1000) + 600, email_verified: true, ...claims })}`;
+    return `${body}.${crypto.sign('RSA-SHA256', Buffer.from(body), key).toString('base64url')}`;
+  };
+  // the verifier itself
+  const good = await verifyGoogleIdToken(mint({ sub: '1', email: 'A@Gmail.com', name: 'Asha' }), { clientId: 'client-123', getKeys });
+  assert.deepEqual(good, { sub: '1', email: 'a@gmail.com', name: 'Asha' });
+  const other = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
+  for (const bad of [mint({ sub: '1', email: 'a@gmail.com' }, other), mint({ sub: '1', email: 'a@gmail.com', aud: 'someone-else' }), mint({ sub: '1', email: 'a@gmail.com', exp: 1 }), mint({ sub: '1', email: 'a@gmail.com', email_verified: false }), mint({ sub: '1', email: 'a@gmail.com', iss: 'https://evil.example' }), 'not.a.jwt']) {
+    await assert.rejects(verifyGoogleIdToken(bad, { clientId: 'client-123', getKeys }));
+  }
+
+  // the endpoint, with a verifier backed by the test key
+  process.env.GOOGLE_CLIENT_ID = 'client-123';
+  const gserver = createApp({ demo: false, googleVerifier: (t, o) => verifyGoogleIdToken(t, { ...o, getKeys }) }).listen(0);
+  const gbase = `http://127.0.0.1:${gserver.address().port}`;
+  try {
+    let cookie = '';
+    const call = async (method, url, body) => {
+      const r = await fetch(gbase + url, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
+      for (const c of r.headers.getSetCookie?.() || []) cookie = c.split(';')[0];
+      return { status: r.status, data: await r.json().catch(() => null) };
+    };
+    assert.equal((await call('GET', '/api/bootstrap')).data.googleClientId, 'client-123');
+    assert.equal((await call('POST', '/api/auth/google', { credential: 'junk' })).status, 401);
+    const first = await call('POST', '/api/auth/google', { credential: mint({ sub: 'g-100', email: 'newbie@gmail.com', name: 'New Bie' }) });
+    assert.equal(first.status, 200);
+    assert.equal(first.data.user.role, 'user');
+    assert.equal(first.data.user.email, 'newbie@gmail.com');
+    assert.equal((await call('GET', '/api/auth/me')).data.user.name, 'New Bie');
+    // a Google-only account has no usable password
+    const pw = await client()('POST', '/api/auth/login', { id: 'newbie@gmail.com', password: '!', as: 'user' });
+    assert.equal(pw.status, 401);
+    // phone can be added later (and left empty)
+    assert.equal((await call('PATCH', '/api/auth/me', { phone: '9890123456' })).data.user.phone, '9890123456');
+    // signing in again reuses the same account
+    cookie = '';
+    const again = await call('POST', '/api/auth/google', { credential: mint({ sub: 'g-100', email: 'newbie@gmail.com' }) });
+    assert.equal(again.data.user.id, first.data.user.id);
+    // an existing password account with the same verified e-mail is linked, not duplicated
+    cookie = '';
+    const reg = await call('POST', '/api/auth/register', { ...newUser, email: 'link@example.com', phone: '9890000001' });
+    cookie = '';
+    const linked = await call('POST', '/api/auth/google', { credential: mint({ sub: 'g-200', email: 'link@example.com' }) });
+    assert.equal(linked.status, 200);
+    assert.equal(linked.data.user.id, reg.data.user.id);
+    // owner accounts can never sign in through Google
+    cookie = '';
+    assert.equal((await call('POST', '/api/auth/google', { credential: mint({ sub: 'g-300', email: 'boss@example.com' }) })).status, 403);
+    assert.equal((await call('GET', '/api/auth/me')).data.user, null);
+  } finally { gserver.close(); delete process.env.GOOGLE_CLIENT_ID; }
+});
+
+/* ---------------- realtime chat ---------------- */
+async function openStream(cookie) {
+  const ctrl = new AbortController();
+  const res = await fetch(base + '/api/events', { headers: { cookie }, signal: ctrl.signal });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/event-stream/);
+  const reader = res.body.getReader(); let buf = '';
+  const waitFor = async (re, ms = 3000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (re.test(buf)) { const hit = buf; buf = ''; return hit; }
+      const r = await Promise.race([reader.read(), new Promise((r2) => setTimeout(() => r2(null), 200))]);
+      if (r && r.value) buf += Buffer.from(r.value).toString();
+    }
+    throw new Error('timed out waiting for ' + re + ' — got: ' + JSON.stringify(buf));
+  };
+  return { waitFor, close: () => ctrl.abort() };
+}
+
+test('chat is realtime: instant push, typing indicator and seen receipts', async () => {
+  const seller = client(), buyer = client(), anon = client();
+  await seller('POST', '/api/auth/register', { ...newUser, email: 'rt-seller@example.com', phone: '9111111101' });
+  await buyer('POST', '/api/auth/register', { ...newUser, email: 'rt-buyer@example.com', phone: '9111111102' });
+  assert.equal((await anon('GET', '/api/events')).status, 401); // stream needs a login
+  const listing = (await seller('POST', '/api/listings', { ...vehicle, title: 'Realtime Ace' })).data.listing;
+  const { data: { id: chatId } } = await buyer('POST', '/api/chats', { listingId: listing.id });
+
+  const sellerStream = await openStream(seller.cookie());
+  await sellerStream.waitFor(/event: hello/);
+  const buyerStream = await openStream(buyer.cookie());
+  await buyerStream.waitFor(/event: hello/);
+  try {
+    // buyer → seller arrives without polling
+    await buyer('POST', `/api/chats/${chatId}/messages`, { text: 'Hi, is this still available?' });
+    await sellerStream.waitFor(/event: sync/);
+    const seen0 = (await seller('GET', '/api/bootstrap')).data;
+    assert.equal(seen0.messages.at(-1).text, 'Hi, is this still available?');
+    // typing indicator goes to the other person only
+    await seller('POST', `/api/chats/${chatId}/typing`);
+    const typing = await buyerStream.waitFor(/event: typing/);
+    assert.match(typing, new RegExp(chatId));
+    // seller reads → buyer is told, and the buyer's chat shows the read time
+    const before = (await buyer('GET', '/api/bootstrap')).data.chats[0].otherRead;
+    await new Promise((r) => setTimeout(r, 5));
+    await seller('POST', `/api/chats/${chatId}/read`);
+    await buyerStream.waitFor(/event: sync/);
+    const after = (await buyer('GET', '/api/bootstrap')).data.chats[0].otherRead;
+    assert.ok(after > before);
+    assert.ok(after >= seen0.messages.at(-1).createdAt);
+    // reply goes back the other way
+    await seller('POST', `/api/chats/${chatId}/messages`, { text: 'Yes, come and see it.' });
+    await buyerStream.waitFor(/event: sync/);
+    assert.equal((await buyer('GET', '/api/bootstrap')).data.messages.at(-1).text, 'Yes, come and see it.');
+    // outsiders cannot inject typing events
+    const spy = client(); await spy('POST', '/api/auth/register', { ...newUser, email: 'rt-spy@example.com', phone: '9111111103' });
+    assert.equal((await spy('POST', `/api/chats/${chatId}/typing`)).status, 404);
+  } finally { sellerStream.close(); buyerStream.close(); }
 });
