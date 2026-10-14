@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import { DEFAULT_FIELDS } from './form-defaults.js';
 
 const file = process.env.DATABASE_FILE || path.join(process.cwd(), 'data', 'spidy.db');
 if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -131,7 +132,35 @@ CREATE TABLE IF NOT EXISTS finance_requests (
   created_at  INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_finance_user ON finance_requests(user_id);
+
+CREATE TABLE IF NOT EXISTS form_fields (
+  key         TEXT PRIMARY KEY,
+  label       TEXT NOT NULL,
+  type        TEXT NOT NULL,
+  grp         TEXT NOT NULL,
+  required    INTEGER NOT NULL DEFAULT 0,
+  enabled     INTEGER NOT NULL DEFAULT 1,
+  locked      INTEGER NOT NULL DEFAULT 0,
+  builtin     INTEGER NOT NULL DEFAULT 1,
+  placeholder TEXT NOT NULL DEFAULT '',
+  options     TEXT NOT NULL DEFAULT '[]',
+  sort        INTEGER NOT NULL DEFAULT 0
+);
 `);
+
+// migrations for databases created by earlier versions
+if (!db.prepare('PRAGMA table_info(listings)').all().some((c) => c.name === 'extras')) {
+  db.exec("ALTER TABLE listings ADD COLUMN extras TEXT NOT NULL DEFAULT '{}'");
+}
+
+/** Insert any built-in form fields that are missing (never overwrites owner edits). */
+export function ensureFormFields() {
+  const have = new Set(db.prepare('SELECT key FROM form_fields').all().map((r) => r.key));
+  const ins = db.prepare('INSERT INTO form_fields (key,label,type,grp,required,enabled,locked,builtin,placeholder,options,sort) VALUES (?,?,?,?,?,1,?,1,?,?,?)');
+  DEFAULT_FIELDS.forEach((f, i) => {
+    if (!have.has(f.key)) ins.run(f.key, f.label, f.type, f.group, f.required ? 1 : 0, f.locked ? 1 : 0, f.placeholder, JSON.stringify(f.options), (i + 1) * 10);
+  });
+}
 
 /** Run fn inside a transaction (rolls back if it throws). */
 export function tx(fn) {
@@ -166,7 +195,7 @@ export const listingRow = (l) => l && ({
   title: l.title, year: l.year, tyres: l.tyres, emission: l.emission, fuel: l.fuel, transmission: l.transmission,
   km: l.km, engine: l.engine, power: l.power, load: l.load, ownership: l.ownership, regNo: l.reg_no, body: l.body,
   city: l.city, state: l.state, price: l.price, negotiable: !!l.negotiable, description: l.description,
-  highlights: JSON.parse(l.highlights), color: l.color, photos: JSON.parse(l.photos), status: l.status,
+  highlights: JSON.parse(l.highlights), extras: JSON.parse(l.extras || '{}'), color: l.color, photos: JSON.parse(l.photos), status: l.status,
   views: l.views, createdAt: l.created_at, updatedAt: l.updated_at,
 });
 
@@ -195,3 +224,9 @@ export function notify(userId, n) {
   db.prepare(`DELETE FROM notifications WHERE user_id = ? AND id NOT IN
     (SELECT id FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 200)`).run(userId, userId);
 }
+
+export const formFieldRow = (f) => f && ({
+  key: f.key, label: f.label, type: f.type, group: f.grp, required: !!f.required, enabled: !!f.enabled,
+  locked: !!f.locked, builtin: !!f.builtin, placeholder: f.placeholder, options: JSON.parse(f.options), sort: f.sort,
+});
+export const allFormFields = () => db.prepare('SELECT * FROM form_fields ORDER BY sort, key').all().map(formFieldRow);

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  db, tx, uid, notify, userRow, publicUserRow, listingRow, chatRow, messageRow, notificationRow, financeRow,
+  db, tx, uid, notify, ensureFormFields, allFormFields, userRow, publicUserRow, listingRow, chatRow, messageRow, notificationRow, financeRow,
 } from './db.js';
 import {
   COOKIE, hashPassword, verifyPassword, newSalt, createSession, destroySession, destroyUserSessions,
@@ -11,8 +11,9 @@ import {
 } from './security.js';
 import { scheduleBotReply } from './bot.js';
 import {
-  CATEGORY_IDS, SUBS, CAT_PREFIX, SPEC_DEFAULTS, STATES, EMISSIONS, FUELS, subById,
+  CATEGORY_IDS, CAT_PREFIX, SPEC_DEFAULTS, STATES, subById,
 } from './catalog.js';
+import { GROUPS, CUSTOM_TYPES, REQUIRABLE } from './form-defaults.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const AVATAR_COLORS = ['#E5194D', '#2563EB', '#138A43', '#7C3AED', '#D97706', '#0891B2', '#DB2777'];
@@ -44,16 +45,26 @@ function cleanImages(arr, max, allowArt = false) {
   return out;
 }
 
-function validateListing(d) {
+const SELECT_DEFAULTS = { emission: 'BS-VI', fuel: 'Diesel', transmission: 'Manual' };
+const TEXT_KEYS = ['regNo', 'engine', 'power', 'load', 'body'];
+const TEXT_MAX = { regNo: 20, engine: 40, power: 40, load: 60, body: 80 };
+
+/** Validate + normalise a listing payload against the owner-configured form. `prev` = existing listing (edits). */
+function validateListing(d, fields, prev = null) {
+  const F = Object.fromEntries(fields.map((f) => [f.key, f]));
+  const on = (k) => F[k] && F[k].enabled;
+  const label = (k, fallback) => (F[k] ? F[k].label : fallback);
   const out = {};
+
+  // identity fields are always required
   if (!CATEGORY_IDS.includes(d.category)) throw bad('Choose a vehicle type', 'category');
   out.category = d.category;
   if (d.category === 'trucks') {
-    if (!subById(d.subtype)) throw bad('Choose a truck type', 'subtype');
+    if (!subById(d.subtype)) throw bad(`Choose a ${label('subtype', 'truck type').toLowerCase()}`, 'subtype');
     out.subtype = d.subtype;
   } else out.subtype = null;
-  out.brand = str(d.brand, 60); if (!out.brand) throw bad('Choose a brand', 'brand');
-  out.model = str(d.model, 80); if (!out.model) throw bad('Enter the model name', 'model');
+  out.brand = str(d.brand, 60); if (!out.brand) throw bad(`Choose a ${label('brand', 'brand').toLowerCase()}`, 'brand');
+  out.model = str(d.model, 80); if (!out.model) throw bad(`Enter the ${label('model', 'model').toLowerCase()}`, 'model');
   out.city = str(d.city, 80); if (!out.city) throw bad('Enter the city', 'city');
   out.state = str(d.state, 60); if (!STATES.includes(out.state)) throw bad('Choose a state', 'state');
   const now = new Date().getFullYear();
@@ -63,28 +74,54 @@ function validateListing(d) {
   if (!(out.price >= 10000 && out.price <= 5_000_000_000)) throw bad('Enter a price of at least ₹10,000', 'price');
   if (d.km === '' || d.km === null || d.km === undefined || !(+d.km >= 0 && +d.km <= 10_000_000)) throw bad('Enter the distance or hours used', 'km');
   out.km = Math.trunc(+d.km);
-  out.tyres = Math.min(30, Math.max(0, Math.trunc(+d.tyres) || 0));
-  out.emission = EMISSIONS.includes(d.emission) ? d.emission : 'BS-VI';
-  out.fuel = FUELS.includes(d.fuel) ? d.fuel : 'Diesel';
-  out.transmission = ['Manual', 'Automatic', 'AMT'].includes(d.transmission) ? d.transmission : 'Manual';
-  out.ownership = ['1st Owner', '2nd Owner', '3rd Owner', '4th Owner or more'].includes(d.ownership) ? d.ownership : '1st Owner';
+
+  const required = (k, empty) => { if (on(k) && F[k].required && empty) throw bad(`${F[k].label} is required`, k); };
   const sp = SPEC_DEFAULTS[d.category === 'trucks' ? d.subtype : d.category];
-  out.engine = str(d.engine, 40) || sp.engine;
-  out.power = str(d.power, 40) || sp.power;
-  out.load = str(d.load, 60) || sp.load;
-  out.body = str(d.body, 80) || sp.body;
-  out.regNo = str(d.regNo, 20).toUpperCase();
-  out.negotiable = d.negotiable ? 1 : 0;
-  out.description = str(d.description, 1200);
-  out.highlights = (Array.isArray(d.highlights) ? d.highlights : []).slice(0, 20).map((h) => str(h, 80)).filter(Boolean);
+
+  out.tyres = Math.min(30, Math.max(0, Math.trunc(+d.tyres) || 0));
+  required('tyres', !out.tyres && !['tractors', 'construction', 'farm'].includes(d.category));
+
+  for (const k of Object.keys(SELECT_DEFAULTS)) {
+    const opts = F[k]?.options || [];
+    let v = str(d[k], 40);
+    if (on(k) && opts.length && !opts.includes(v) && v !== prev?.[k]) v = '';
+    if (!v) { required(k, true); v = opts.includes(SELECT_DEFAULTS[k]) ? SELECT_DEFAULTS[k] : (opts[0] || ''); }
+    out[k] = v;
+  }
+  for (const k of TEXT_KEYS) {
+    let v = str(d[k], TEXT_MAX[k]);
+    if (k === 'regNo') v = v.toUpperCase();
+    if (on(k)) { required(k, !v); if (!v && k !== 'regNo') v = sp[k === 'body' ? 'body' : k]; }
+    out[k] = v;
+  }
+  out.negotiable = d.negotiable === undefined ? 1 : d.negotiable ? 1 : 0;
+  out.description = str(d.description, 1200); required('description', !out.description);
+  out.highlights = (Array.isArray(d.highlights) ? d.highlights : []).slice(0, 30).map((h) => str(h, 80)).filter(Boolean);
+  required('highlights', !out.highlights.length);
   out.color = /^#[0-9a-fA-F]{6}$/.test(d.color || '') ? d.color : '#F3F4F7';
-  out.photos = cleanImages(d.photos, 8);
+  out.photos = cleanImages(d.photos, 8); required('photos', !out.photos.length);
+  out.ownership = ['1st Owner', '2nd Owner', '3rd Owner', '4th Owner or more'].includes(d.ownership) ? d.ownership : '1st Owner';
+
+  // owner-defined custom fields
+  const given = d.extras && typeof d.extras === 'object' ? d.extras : {};
+  out.extras = {};
+  for (const f of fields.filter((x) => !x.builtin)) {
+    const raw = given[f.key];
+    let v;
+    if (f.type === 'toggle') v = raw === undefined || raw === '' ? undefined : !!raw;
+    else if (f.type === 'number') v = raw === '' || raw == null || !Number.isFinite(+raw) ? undefined : +raw;
+    else if (f.type === 'select') v = typeof raw === 'string' && (f.options.includes(raw) || (!f.enabled && raw)) ? raw.slice(0, 80) : undefined;
+    else v = raw == null ? undefined : str(raw, f.type === 'textarea' ? 1000 : 200) || undefined;
+    if (f.enabled && f.required && f.type !== 'toggle' && v === undefined) throw bad(`${f.label} is required`, f.key);
+    if (v !== undefined) out.extras[f.key] = v;
+  }
   out.title = `${out.brand} ${out.model}`.replace(/^Tata Tata/, 'Tata');
   return out;
 }
 
 /* -------------------------------- app ---------------------------------- */
 export function createApp({ demo = true } = {}) {
+  ensureFormFields();
   const app = express();
   app.disable('x-powered-by');
   if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
@@ -238,7 +275,7 @@ export function createApp({ demo = true } = {}) {
     const changed = db.prepare(`SELECT l.* FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible} AND l.updated_at >= ?`)
       .all(meId, lsince).map(listingRow);
 
-    const out = { now: Date.now(), demo, user: me ? userRow(me) : null, listings: changed, listingIds: ids };
+    const out = { now: Date.now(), demo, user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields() };
     const userIds = new Set(db.prepare(`SELECT DISTINCT l.seller_id id FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible}`).all(meId).map((r) => r.id));
     if (me && me.role === 'user') {
       const chats = db.prepare(`SELECT * FROM chats WHERE (buyer_id = ? AND buyer_hidden = 0) OR (seller_id = ? AND seller_hidden = 0) ORDER BY updated_at DESC`).all(meId, meId);
@@ -267,11 +304,11 @@ export function createApp({ demo = true } = {}) {
     do { id = pre + String(Math.floor(100000 + Math.random() * 899999)); } while (db.prepare('SELECT 1 FROM listings WHERE id = ?').get(id));
     return id;
   }
-  const L_COLS = ['category', 'subtype', 'brand', 'model', 'title', 'year', 'tyres', 'emission', 'fuel', 'transmission', 'km', 'engine', 'power', 'load', 'ownership', 'reg_no', 'body', 'city', 'state', 'price', 'negotiable', 'description', 'highlights', 'color', 'photos'];
-  const lVals = (v) => [v.category, v.subtype, v.brand, v.model, v.title, v.year, v.tyres, v.emission, v.fuel, v.transmission, v.km, v.engine, v.power, v.load, v.ownership, v.regNo, v.body, v.city, v.state, v.price, v.negotiable, v.description, JSON.stringify(v.highlights), v.color, JSON.stringify(v.photos)];
+  const L_COLS = ['category', 'subtype', 'brand', 'model', 'title', 'year', 'tyres', 'emission', 'fuel', 'transmission', 'km', 'engine', 'power', 'load', 'ownership', 'reg_no', 'body', 'city', 'state', 'price', 'negotiable', 'description', 'highlights', 'color', 'photos', 'extras'];
+  const lVals = (v) => [v.category, v.subtype, v.brand, v.model, v.title, v.year, v.tyres, v.emission, v.fuel, v.transmission, v.km, v.engine, v.power, v.load, v.ownership, v.regNo, v.body, v.city, v.state, v.price, v.negotiable, v.description, JSON.stringify(v.highlights), v.color, JSON.stringify(v.photos), JSON.stringify(v.extras)];
 
   api.post('/listings', needUser, wrap(async (req, res) => {
-    const v = validateListing(req.body);
+    const v = validateListing(req.body, allFormFields());
     const id = nextListingId(v); const now = Date.now();
     db.prepare(`INSERT INTO listings (id,seller_id,${L_COLS.join(',')},status,views,created_at,updated_at) VALUES (?,?,${L_COLS.map(() => '?').join(',')},'active',0,?,?)`)
       .run(id, req.user.id, ...lVals(v), now, now);
@@ -288,8 +325,8 @@ export function createApp({ demo = true } = {}) {
   api.patch('/listings/:id', needUser, wrap(async (req, res) => {
     const cur = ownListing(req);
     if (cur.status === 'removed') throw new HttpError(403, 'This listing was removed by the Spidy team');
-    const merged = { ...listingRow(cur), ...req.body };
-    const v = validateListing(merged);
+    const prev = listingRow(cur);
+    const v = validateListing({ ...prev, ...req.body }, allFormFields(), prev);
     db.prepare(`UPDATE listings SET ${L_COLS.map((c) => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...lVals(v), Date.now(), cur.id);
     res.json({ listing: listingRow(db.prepare('SELECT * FROM listings WHERE id = ?').get(cur.id)) });
   }));
@@ -514,6 +551,76 @@ export function createApp({ demo = true } = {}) {
       notify(r.user_id, { title: 'Finance team has reached out', body: `Update on your request for ${l ? l.title : 'your vehicle'}. Expect a call from our finance team.`, link: '#/profile/finance', icon: 'bank' });
     }
     res.json({ ok: true });
+  });
+
+
+  /* ---- owner: edit the "Sell your vehicle" form ---- */
+  const fieldByKey = (key) => {
+    const f = db.prepare('SELECT * FROM form_fields WHERE key = ?').get(key);
+    if (!f) throw new HttpError(404, 'Field not found');
+    return f;
+  };
+  const cleanOptions = (arr, min = 1) => {
+    const seen = new Set();
+    const opts = (Array.isArray(arr) ? arr : []).map((o) => str(o, 60)).filter((o) => o && !seen.has(o) && seen.add(o)).slice(0, 40);
+    if (opts.length < min) throw bad(min > 1 ? `Add at least ${min} options` : 'Add at least one option', 'options');
+    return opts;
+  };
+
+  owner.get('/form-fields', (req, res) => res.json({ fields: allFormFields() }));
+
+  owner.post('/form-fields', (req, res) => {
+    const label = str(req.body.label, 60);
+    if (label.length < 2) throw bad('Enter a field name', 'label');
+    const type = req.body.type;
+    if (!CUSTOM_TYPES.includes(type)) throw bad('Choose a field type', 'type');
+    const group = GROUPS.includes(req.body.group) && ['details', 'pricing'].includes(req.body.group) ? req.body.group : 'details';
+    const options = type === 'select' ? cleanOptions(req.body.options, 2) : [];
+    const sort = db.prepare('SELECT COALESCE(MAX(sort),0) m FROM form_fields').get().m + 10;
+    const key = 'x_' + uid('').slice(-10);
+    db.prepare('INSERT INTO form_fields (key,label,type,grp,required,enabled,locked,builtin,placeholder,options,sort) VALUES (?,?,?,?,?,1,0,0,?,?,?)')
+      .run(key, label, type, group, REQUIRABLE.includes(type) && req.body.required ? 1 : 0, str(req.body.placeholder, 80), JSON.stringify(options), sort);
+    res.status(201).json({ fields: allFormFields() });
+  });
+
+  owner.patch('/form-fields/:key', (req, res) => {
+    const f = fieldByKey(req.params.key); const b = req.body; const set = {};
+    if (b.label !== undefined) { set.label = str(b.label, 60); if (set.label.length < 2) throw bad('Enter a field name', 'label'); }
+    if (b.placeholder !== undefined) set.placeholder = str(b.placeholder, 80);
+    if (b.options !== undefined && ['select', 'checks'].includes(f.type)) set.options = JSON.stringify(cleanOptions(b.options, f.type === 'select' ? 2 : 1));
+    if (b.group !== undefined && !f.builtin && ['details', 'pricing'].includes(b.group)) set.grp = b.group;
+    if (b.enabled !== undefined) {
+      if (f.locked && !b.enabled) throw new HttpError(403, 'This field is needed for every listing and cannot be hidden');
+      set.enabled = b.enabled ? 1 : 0;
+    }
+    if (b.required !== undefined) {
+      if (f.locked && !b.required) throw new HttpError(403, 'This field is always required');
+      set.required = REQUIRABLE.includes(f.type) && b.required ? 1 : 0;
+    }
+    const keys = Object.keys(set);
+    if (keys.length) db.prepare(`UPDATE form_fields SET ${keys.map((k) => `${k} = ?`).join(', ')} WHERE key = ?`).run(...keys.map((k) => set[k]), f.key);
+    res.json({ fields: allFormFields() });
+  });
+
+  owner.post('/form-fields/:key/move', (req, res) => {
+    const f = fieldByKey(req.params.key);
+    const dir = +req.body.dir < 0 ? -1 : 1;
+    const peers = db.prepare('SELECT key,sort FROM form_fields WHERE grp = ? ORDER BY sort, key').all(f.grp);
+    const i = peers.findIndex((p) => p.key === f.key); const j = i + dir;
+    if (j >= 0 && j < peers.length) {
+      tx(() => {
+        const up = db.prepare('UPDATE form_fields SET sort = ? WHERE key = ?');
+        up.run(-1, peers[i].key); up.run(peers[i].sort, peers[j].key); up.run(peers[j].sort, peers[i].key);
+      });
+    }
+    res.json({ fields: allFormFields() });
+  });
+
+  owner.delete('/form-fields/:key', (req, res) => {
+    const f = fieldByKey(req.params.key);
+    if (f.builtin) throw new HttpError(403, 'Built-in fields can be hidden but not deleted');
+    db.prepare('DELETE FROM form_fields WHERE key = ?').run(f.key);
+    res.json({ fields: allFormFields() });
   });
 
   api.use((req, res) => res.status(404).json({ error: 'Not found' }));

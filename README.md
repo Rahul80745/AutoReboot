@@ -9,6 +9,8 @@ real accounts with two sign-in types:
 | Account creation | Self-service sign-up (email, mobile, password) | Created by the administrator (first start / CLI) |
 | Can | Browse, list vehicles, chat privately, save vehicles, request finance | Owner console: stats, verify / suspend / delete users, remove / restore / delete listings, work finance requests |
 
+**Sell form:** tapping Sell asks "What are you selling?", then opens one form (truck type → brand → model number, then the details). The owner controls that form from **Owner dashboard → Sell form**: show/hide fields, make them required, rename them, edit dropdown options, reorder, and add or delete custom fields. Custom field answers show on the vehicle page. Core fields (type, brand, model, year, km, price, city, state) are always on.
+
 The two sign-ins are separate: an owner's credentials are rejected on the user form and vice-versa.
 
 ## Run it

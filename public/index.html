@@ -310,12 +310,12 @@ textarea.input{height:auto;padding:12px 14px;resize:vertical;min-height:110px}
 .stars{display:flex;align-items:center;gap:4px;font-size:14px;font-weight:600;color:var(--ink-2)}
 .stars .ic{color:#F5A524;fill:#F5A524}
 .det-title{font-size:clamp(24px,3.4vw,32px);margin:18px 0 4px;font-weight:800;letter-spacing:-.02em}
-.specs{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:14px 8px;margin:16px 0}
+.specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px;padding:14px 8px;margin:16px 0}
 .spec{display:flex;align-items:center;gap:9px;padding:4px 8px;min-width:0}
 .spec .ic{color:var(--primary)}
 .spec small{display:block;font-size:12px;color:var(--ink-2);font-weight:600}
 .spec b{font-size:14px;font-weight:700;white-space:nowrap}
-@media (max-width:1000px){.specs{grid-template-columns:repeat(3,1fr);row-gap:14px}}
+@media (max-width:1000px){.specs{row-gap:14px}}
 @media (max-width:480px){.specs{grid-template-columns:repeat(2,1fr)}}
 .det-cols{display:grid;grid-template-columns:1fr 1.15fr;gap:16px}
 @media (max-width:700px){.det-cols{grid-template-columns:1fr}}
@@ -905,7 +905,7 @@ const SWATCHES = ['#F3F4F7','#1F5FD1','#E9B21C','#D63A2F','#1BA39C','#E2541B','#
    that is hydrated from /api/bootstrap and polled, so views can stay synchronous. */
 class ApiError extends Error { constructor(msg, field){ super(msg); this.field = field; } }
 
-const Store = { ready:false, me:null, demo:false, users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
+const Store = { ready:false, me:null, demo:false, formFields:[], users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
 const serverNow = () => Date.now() + Store.skew;
 
 async function http(method, url, body){
@@ -926,7 +926,7 @@ const Sync = {
   /* merge a /api/bootstrap payload into the cache; returns what changed so the UI can refresh */
   apply(d){
     const prevMe = Store.me && Store.me.id, prevMsgs = Store.messages.length, prevNoti = Store.notifications.length, prevChats = Store.chats.length;
-    Store.skew = d.now - Date.now(); Store.demo = !!d.demo; Store.me = d.user;
+    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.demo = !!d.demo; Store.me = d.user;
     Store.users = {}; (d.users||[]).forEach(u => Store.users[u.id] = u);
     const keep = new Set(d.listingIds), byId = new Map(Store.listings.filter(l => keep.has(l.id)).map(l => [l.id, l]));
     d.listings.forEach(l => { const old = byId.get(l.id); byId.set(l.id, old ? {...l, views:Math.max(l.views, old.views||0)} : l); });
@@ -1087,6 +1087,11 @@ const API = (() => {
     patchListing: (id, status) => http('PATCH', `/api/owner/listings/${encodeURIComponent(id)}`, {status}),
     deleteListing: id => http('DELETE', `/api/owner/listings/${encodeURIComponent(id)}`),
     finance: () => http('GET', '/api/owner/finance').then(r=>r.requests),
+    formFields: () => http('GET', '/api/owner/form-fields').then(r => (Store.formFields = r.fields)),
+    addField: p => http('POST', '/api/owner/form-fields', p).then(r => (Store.formFields = r.fields)),
+    patchField: (key, p) => http('PATCH', `/api/owner/form-fields/${encodeURIComponent(key)}`, p).then(r => (Store.formFields = r.fields)),
+    moveField: (key, dir) => http('POST', `/api/owner/form-fields/${encodeURIComponent(key)}/move`, {dir}).then(r => (Store.formFields = r.fields)),
+    deleteField: key => http('DELETE', `/api/owner/form-fields/${encodeURIComponent(key)}`).then(r => (Store.formFields = r.fields)),
     patchFinance: (id, status) => http('PATCH', `/api/owner/finance/${encodeURIComponent(id)}`, {status}),
   };
 
@@ -1400,8 +1405,8 @@ Views.details = ({id}) => {
   const imgs = imgsOf(l);
   const similar = API.listings.querySync({category:l.category, subtype:l.subtype||undefined}).filter(x=>x.id!==l.id).slice(0,8);
   const backTo = l.category==='trucks' ? `#/list/trucks/${l.subtype}` : `#/list/${l.category}/_`;
-  const specs = [['gauge',usageLabel(l),usageFmt(l)],['engine','Engine',l.engine],['bolt','Power',l.power],['weight',l.category==='buses'?'Seating':'Load Capacity',l.load],['user','Ownership',l.ownership],['pin','Location',`${l.city}, ${STATE_CODE[l.state]||''}`]];
-  const kv = [['Brand',(BRAND_META[l.brand]||{label:l.brand}).label.replace(' Motors','')],['Model',l.model],['Year',l.year],['Registration',l.regNo||'—'],['Emission Norm',l.emission],['Body Type',l.body],[l.category==='buses'?'Seating':'Load Capacity',l.load],l.tyres?['No. of Tyres',l.tyres+((l.highlights||[]).includes('New Tyres')?' (New Tyres)':'')]:null,[usageLabel(l),usageFmt(l)],['Engine',l.engine],['Power',l.power],['Fuel Type',l.fuel],['Transmission',l.transmission]].filter(Boolean);
+  const specs = [['gauge',usageLabel(l),usageFmt(l)],['engine','Engine',l.engine],['bolt','Power',l.power],['weight',l.category==='buses'?'Seating':'Load Capacity',l.load],['pin','Location',`${l.city}, ${STATE_CODE[l.state]||''}`]];
+  const kv = [['Brand',(BRAND_META[l.brand]||{label:l.brand}).label.replace(' Motors','')],['Model',l.model],['Year',l.year],['Registration',l.regNo||'—'],['Emission Norm',l.emission],['Body Type',l.body],[l.category==='buses'?'Seating':'Load Capacity',l.load],l.tyres?['No. of Tyres',l.tyres+((l.highlights||[]).includes('New Tyres')?' (New Tyres)':'')]:null,[usageLabel(l),usageFmt(l)],['Engine',l.engine],['Power',l.power],['Fuel Type',l.fuel],['Transmission',l.transmission],...Store.formFields.filter(f=>!f.builtin && l.extras && l.extras[f.key]!==undefined && l.extras[f.key]!=='').map(f=>[f.label, typeof l.extras[f.key]==='boolean' ? (l.extras[f.key]?'Yes':'No') : l.extras[f.key]])].filter(x => x && x[1] !== '' && x[1] != null);
   const ctas = mine
     ? (l.status==='removed' ? '' : `<a href="#/sell/${l.id}" class="btn btn-outline">${I('edit')} Edit listing</a><button class="btn btn-primary" data-sold>${I('check')} ${l.status==='sold'?'Mark as available':'Mark as sold'}</button>`)
     : `<button class="btn btn-outline" data-chat>${I('msg')} Message with seller</button><a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance options</a><div class="note">Get best loan offers for this vehicle</div>`;
@@ -1426,7 +1431,7 @@ Views.details = ({id}) => {
         ${mine?'':`<div class="side-ctas"><button class="btn btn-outline" data-chat>${I('msg')} Message seller</button><a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance</a></div>`}
       </aside>
     </div>
-    <div class="card specs">${specs.map(([ic,k,v])=>`<div class="spec">${I(ic)}<div style="min-width:0"><small>${esc(k)}</small><b>${esc(v)}</b></div></div>`).join('')}</div>
+    <div class="card specs">${specs.filter(x=>x[2]!==''&&x[2]!=null).map(([ic,k,v])=>`<div class="spec">${I(ic)}<div style="min-width:0"><small>${esc(k)}</small><b>${esc(v)}</b></div></div>`).join('')}</div>
     <div class="det-cols">
       <div style="display:flex;flex-direction:column;gap:16px">
         <div class="card panel"><h3>Vehicle Highlights</h3>${(l.highlights||[]).length?(l.highlights).map(h=>`<div class="hl">${I('checkCircle','sm')} ${esc(h)}</div>`).join(''):'<p class="muted" style="margin:0">The seller has not added highlights.</p>'}</div>
@@ -1622,107 +1627,144 @@ function compressImage(file, max=1000, q=.72){
 }
 
 /* ---- sell / edit ---- */
+/* The form is driven by Store.formFields, which the owner edits in the owner console (Sell form tab). */
+const FORM_GROUPS = ['vehicle','details','media','pricing'];
+const FORM_TITLES = {vehicle:'Vehicle', details:'Details', media:'Photos', pricing:'Price & location'};
 Views.sell = ({id}) => {
   const editing = id ? API.listings.get(id) : null;
-  if (id && (!editing || editing.sellerId !== API.meId())) return Views.notFound('You can only edit your own listings.');
+  if (id && (!editing || editing.sellerId !== API.meId() || editing.status === 'removed')) return Views.notFound('You can only edit your own listings.');
   const DKEY = 'spidy_draft_' + API.meId();
+  const me0 = API.auth.me();
   let d;
   if (editing) d = JSON.parse(JSON.stringify(editing));
   else { try { d = JSON.parse(localStorage.getItem(DKEY)); } catch(e){} }
-  d = d || {category:'', subtype:'', brand:'', model:'', year:'', tyres:'', emission:'BS-VI', fuel:'Diesel', transmission:'Manual', km:'', ownership:'1st Owner', regNo:'', engine:'', power:'', load:'', body:'', photos:[], color:'#F3F4F7', price:'', negotiable:true, city:API.auth.me().city||'', state:API.auth.me().state||'', description:'', highlights:['Excellent Running Condition','Regularly Serviced']};
-  let step = 1;
-  const STEPS = ['Vehicle type','Details','Photos','Price & location'];
+  d = d || {category:'', subtype:'', brand:'', model:'', year:'', tyres:'', emission:'', fuel:'', transmission:'', km:'', regNo:'', engine:'', power:'', load:'', body:'', photos:[], color:'#F3F4F7', price:'', negotiable:true, city:me0.city||'', state:me0.state||'', description:'', highlights:['Excellent Running Condition','Regularly Serviced'], extras:{}};
+  d.extras = d.extras || {}; d.photos = d.photos || []; d.highlights = d.highlights || [];
+  let step = editing ? 2 : 1; // 1 = "What are you selling?", 2 = the form
   const saveDraft = () => { if (!editing) try { localStorage.setItem(DKEY, JSON.stringify({...d, photos:d.photos.slice(0,3)})); } catch(e){} };
   const spec = () => SPEC_DEFAULTS[d.category==='trucks' ? (d.subtype||'lorries') : (d.category||'lorries')] || SPEC_DEFAULTS.lorries;
   const isHours = () => HOURS_CATS.includes(d.category);
-  const inp = (k, label, ph, type='text', extra='') => `<div class="field"><label for="s_${k}">${label}</label><input class="input" id="s_${k}" data-k="${k}" type="${type}" placeholder="${esc(ph)}" value="${esc(d[k]??'')}" ${extra}><div class="err-msg" data-err="${k}" hidden></div></div>`;
-  const sel = (k, label, opts) => `<div class="field"><label for="s_${k}">${label}</label><select class="input" id="s_${k}" data-k="${k}">${opts.map(o=>{ const [v,n]=Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(d[k])===String(v)?'selected':''}>${esc(n)}</option>`; }).join('')}</select><div class="err-msg" data-err="${k}" hidden></div></div>`;
+  const fieldsOn = () => Store.formFields.filter(f => f.enabled && !(f.key==='subtype' && d.category!=='trucks'))
+    .sort((a,b) => FORM_GROUPS.indexOf(a.group)-FORM_GROUPS.indexOf(b.group) || a.sort-b.sort);
+  const fieldByKey = k => Store.formFields.find(f => f.key===k);
+  const getV = f => f.builtin ? d[f.key] : d.extras[f.key];
+  const setV = (f, v) => { if (f.builtin) d[f.key] = v; else d.extras[f.key] = v; };
+  const labelOf = f => f.key==='km' && f.label==='KM driven' ? (isHours() ? 'Hours used' : 'KM driven')
+    : f.key==='load' && f.label==='Load capacity' && d.category==='buses' ? 'Seating' : f.label;
+  const phOf = f => {
+    if (f.placeholder) return f.placeholder; const sp = spec(), y = new Date().getFullYear();
+    return {year:String(y-3), km:isHours()?'e.g. 2400':'e.g. 85000', regNo:'e.g. TS 07 UF 1234', engine:sp.engine, power:sp.power, load:sp.load, body:sp.body, price:'e.g. 1250000', city:'e.g. Khammam'}[f.key] || '';
+  };
+  const REQ = ' <span style="color:var(--primary)">*</span>';
+  const field = (f, inner, wide) => `<div class="field" ${wide?'style="grid-column:1/-1"':''}><label for="s_${f.key}">${esc(labelOf(f))}${f.required?REQ:''}</label>${inner}<div class="err-msg" data-err="${f.key}" hidden></div></div>`;
+  const options = (list, cur, blank) => (blank ? `<option value="">${esc(blank)}</option>` : '') + list.map(o => `<option value="${esc(o)}" ${String(cur)===String(o)?'selected':''}>${esc(o)}</option>`).join('');
 
-  function stepHtml(){
-    if (step===1){
-      const brands = d.category ? brandsFor(d.category, d.subtype||'lorries') : [];
-      const series = (brands.find(b=>b[0]===d.brand)||[])[1];
-      return `<h2 style="margin:0 0 12px;font-size:18px">What are you selling?</h2>
-      <div class="pick-grid">${CATS.map(c=>`<button class="pick ${d.category===c.id?'on':''}" data-cat="${c.id}">${catArt(c.id, c.id==='trucks'?'lorries':null, c.id==='trucks'?'#1D4ED8':c.color)}${esc(c.name)}</button>`).join('')}</div>
-      <div class="err-msg" data-err="category" hidden></div>
-      ${d.category==='trucks'?`<h2 style="margin:22px 0 12px;font-size:18px">Truck type</h2><div class="pick-grid">${SUBS.map(s=>`<button class="pick ${d.subtype===s.id?'on':''}" data-sub="${s.id}">${catArt('trucks', s.id, s.color)}${esc(s.name)}</button>`).join('')}</div><div class="err-msg" data-err="subtype" hidden></div>`:''}
-      ${d.category && (d.category!=='trucks'||d.subtype)?`<h2 style="margin:22px 0 12px;font-size:18px">Brand</h2><div class="chips" style="flex-wrap:wrap;padding:0;margin:0">${brands.map(([b])=>`<button class="chip ${d.brand===b?'on':''}" data-brand="${esc(b)}">${esc((BRAND_META[b]||{label:b}).label)}</button>`).join('')}</div><div class="err-msg" data-err="brand" hidden></div>
-      <div style="margin-top:16px">${inp('model','Model name', series ? 'e.g. '+series.split(',')[0] : 'e.g. LPT 1613','text','list="models"')}<datalist id="models">${(series||'').split(',').map(s=>`<option value="${esc(s)}">`).join('')}</datalist></div>`:''}`;
+  function fieldHtml(f){
+    const v = getV(f) ?? '';
+    switch (f.type){
+      case 'subtype': return field(f, `<select class="input" id="s_subtype" data-fk="subtype"><option value="">Select ${esc(f.label.toLowerCase())}</option>${SUBS.map(s=>`<option value="${s.id}" ${d.subtype===s.id?'selected':''}>${esc(s.name)}</option>`).join('')}</select>`);
+      case 'brand': {
+        const need = d.category==='trucks' && !d.subtype; const names = brandsFor(d.category, d.subtype||'lorries').map(b=>b[0]);
+        if (d.brand && !names.includes(d.brand)) names.unshift(d.brand);
+        return field(f, `<select class="input" id="s_brand" data-fk="brand" ${need?'disabled':''}>${options(names.map(n=>n), d.brand, need ? 'Select truck type first' : 'Select brand')}</select>`);
+      }
+      case 'text': {
+        let extra = ''; let dl = '';
+        if (f.key==='model'){ const series = (brandsFor(d.category, d.subtype||'lorries').find(b=>b[0]===d.brand)||[])[1]; extra = 'list="models"'; dl = `<datalist id="models">${(series||'').split(',').filter(Boolean).map(s=>`<option value="${esc(s)}">`).join('')}</datalist>`; }
+        if (f.key==='regNo') extra = 'style="text-transform:uppercase"';
+        return field(f, `<input class="input" id="s_${f.key}" data-fk="${f.key}" type="text" placeholder="${esc(f.key==='model' && !f.placeholder ? 'e.g. LPT 1613' : phOf(f))}" value="${esc(v)}" ${extra}>${dl}`);
+      }
+      case 'number': return field(f, `<input class="input" id="s_${f.key}" data-fk="${f.key}" type="number" inputmode="numeric" placeholder="${esc(phOf(f))}" value="${esc(v)}" min="0">`) + (f.key==='price' ? `<div class="muted" style="font-size:13px;grid-column:1/-1;margin-top:-6px" data-pricehint>${+d.price?`Shown as ${inr(d.price)} (${inrShort(+d.price)})`:''}</div>` : '');
+      case 'textarea': return field(f, `<textarea class="input" id="s_${f.key}" data-fk="${f.key}" maxlength="1200" placeholder="${esc(f.placeholder || (f.key==='description' ? 'Condition, service history, papers, reason for selling…' : ''))}">${esc(v)}</textarea>`, true);
+      case 'select': {
+        let list = f.options.slice(); if (v && !list.includes(v)) list.unshift(v);
+        if (f.builtin && !v && list.length){ const def = {emission:'BS-VI',fuel:'Diesel',transmission:'Manual'}[f.key]; setV(f, list.includes(def) ? def : list[0]); }
+        return field(f, `<select class="input" id="s_${f.key}" data-fk="${f.key}">${options(list, getV(f), f.builtin ? '' : 'Select…')}</select>`);
+      }
+      case 'tyres': {
+        const opts = d.category==='three-wheeler' ? ['3'] : d.category==='mini-trucks' ? ['4','6'] : HOURS_CATS.includes(d.category) ? ['0'] : ['6','10','12','14','16','18','22'];
+        if (!opts.includes(String(d.tyres))) d.tyres = opts[0];
+        return field(f, `<select class="input" id="s_tyres" data-fk="tyres">${opts.map(o=>`<option value="${o}" ${String(d.tyres)===o?'selected':''}>${o==='0'?'Not applicable':o}</option>`).join('')}</select>`);
+      }
+      case 'state': return field(f, `<select class="input" id="s_state" data-fk="state">${options(STATES, d.state, 'Select state')}</select>`);
+      case 'toggle': {
+        const on = f.builtin ? !!d[f.key] : !!d.extras[f.key];
+        return `<div class="field"><label>&nbsp;</label><button type="button" class="set-row card" data-tg="${f.key}" style="height:50px;padding:0 14px"><span class="grow" style="font-weight:600">${esc(f.label)}</span><span class="toggle ${on?'on':''}"></span></button></div>`;
+      }
+      case 'checks': return `<div class="field" style="grid-column:1/-1"><label>${esc(f.label)}${f.required?REQ:''}</label><div class="checks">${f.options.map(h=>`<label><input type="checkbox" data-hl="${esc(h)}" ${d.highlights.includes(h)?'checked':''}> ${esc(h)}</label>`).join('')}</div><div class="err-msg" data-err="${f.key}" hidden></div></div>`;
+      case 'photos': return `<div style="grid-column:1/-1"><p class="muted" style="margin:0 0 12px;font-size:14px">${esc(f.label)}${f.required?REQ:''} — add up to 8 clear photos: front, side, rear, cabin and tyres. The first photo is the cover.</p>
+        <div class="photos">${d.photos.map((p,i)=>`<div class="ph"><img src="${p}" alt="Photo ${i+1}"><button type="button" data-rmph="${i}" aria-label="Remove photo">${I('x','xs')}</button>${i===0?'<span class="cover">Cover</span>':`<button type="button" data-cover="${i}" style="left:6px;right:auto;top:auto;bottom:6px;width:auto;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;height:22px">Make cover</button>`}</div>`).join('')}
+        ${d.photos.length<8?`<label class="add">${I('camera','lg')}Add photos<input type="file" accept="image/*" multiple hidden data-photos></label>`:''}</div>
+        <div data-uploading class="muted" style="font-size:13px;margin-top:8px" hidden>Processing photos…</div><div class="err-msg" data-err="photos" hidden></div></div>`;
+      case 'color': return d.photos.length ? '' : `<div class="card" style="padding:16px;grid-column:1/-1"><b style="display:block;margin-bottom:4px">No photos yet?</b><p class="muted" style="margin:0 0 12px;font-size:14px">We'll show an illustration of your vehicle until you add photos. Pick the closest body colour.</p>
+        <div class="swatches">${SWATCHES.map(c=>`<button type="button" data-color="${c}" class="${d.color===c?'on':''}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>
+        <div class="preview-wrap" style="margin-top:14px">${VA.scene(VA.draw(d.category, d.subtype, d.color, +d.tyres||6))}</div></div>`;
     }
-    if (step===2){
-      const sp = spec(); const y = new Date().getFullYear();
-      const tyreOpts = d.category==='three-wheeler' ? ['3'] : d.category==='mini-trucks' ? ['4','6'] : ['tractors','construction','farm'].includes(d.category) ? [['0','Not applicable']] : ['6','10','12','14','16','18','22'];
-      if (!tyreOpts.flat().includes(String(d.tyres))) d.tyres = Array.isArray(tyreOpts[0]) ? tyreOpts[0][0] : tyreOpts[0];
-      return `<h2 style="margin:0 0 12px;font-size:18px">Vehicle details</h2>
-      <div class="grid2">${inp('year','Model year', String(y-3),'number',`inputmode="numeric" min="1990" max="${y}"`)}${inp('km', isHours()?'Hours used':'KM driven', isHours()?'e.g. 2400':'e.g. 85000','number','inputmode="numeric" min="0"')}
-      ${sel('tyres','No. of tyres', tyreOpts)}${sel('ownership','Ownership',['1st Owner','2nd Owner','3rd Owner','4th Owner or more'])}
-      ${sel('emission','Emission norm',['BS-VI','BS-IV','BS-III','Zero Emission'])}${sel('fuel','Fuel type',['Diesel','CNG','Petrol','Electric'])}
-      ${sel('transmission','Transmission',['Manual','Automatic','AMT'])}${inp('regNo','Registration number','e.g. TS 07 UF 1234','text','style="text-transform:uppercase"')}
-      ${inp('engine','Engine', sp.engine)}${inp('power','Power', sp.power)}${inp('load', d.category==='buses'?'Seating':'Load capacity', sp.load)}${inp('body','Body type', sp.body)}</div>
-      <p class="muted" style="font-size:13px;margin:0">Leave engine, power, load and body empty to use typical values for this vehicle type.</p>`;
-    }
-    if (step===3){
-      return `<h2 style="margin:0 0 4px;font-size:18px">Photos</h2><p class="muted" style="margin:0 0 14px;font-size:14px">Add up to 8 clear photos — front, side, rear, cabin and tyres. The first photo is the cover.</p>
-      <div class="photos">${d.photos.map((p,i)=>`<div class="ph"><img src="${p}" alt="Photo ${i+1}"><button data-rmph="${i}" aria-label="Remove photo">${I('x','xs')}</button>${i===0?'<span class="cover">Cover</span>':`<button data-cover="${i}" style="left:6px;right:auto;top:auto;bottom:6px;width:auto;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;height:22px">Make cover</button>`}</div>`).join('')}
-      ${d.photos.length<8?`<label class="add">${I('camera','lg')}Add photos<input type="file" accept="image/*" multiple hidden data-photos></label>`:''}</div>
-      <div data-uploading class="muted" style="font-size:13px;margin-top:8px" hidden>Processing photos…</div>
-      ${!d.photos.length?`<div class="card" style="padding:16px;margin-top:18px"><b style="display:block;margin-bottom:4px">No photos yet?</b><p class="muted" style="margin:0 0 12px;font-size:14px">We'll show an illustration of your vehicle until you add photos. Pick the closest body colour.</p>
-      <div class="swatches">${SWATCHES.map(c=>`<button data-color="${c}" class="${d.color===c?'on':''}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</div>
-      <div class="preview-wrap" style="margin-top:14px">${VA.scene(VA.draw(d.category, d.subtype, d.color, +d.tyres||6))}</div></div>`:''}`;
-    }
-    return `<h2 style="margin:0 0 12px;font-size:18px">Price & location</h2>
-      <div class="grid2">${inp('price','Expected price (₹)','e.g. 1250000','number','inputmode="numeric" min="10000"')}
-      <div class="field"><label>&nbsp;</label><button type="button" class="set-row card" data-neg style="height:50px;padding:0 14px"><span class="grow" style="font-weight:600">Price is negotiable</span><span class="toggle ${d.negotiable?'on':''}"></span></button></div>
-      ${inp('city','City','e.g. Khammam')}${sel('state','State',[['','Select state'],...STATES])}</div>
-      <div class="muted" style="font-size:13px;margin:-6px 0 14px" data-pricehint>${d.price?`Shown as ${inr(d.price)} (${inrShort(+d.price)})`:''}</div>
-      <div class="field"><label for="s_description">Description</label><textarea class="input" id="s_description" data-k="description" maxlength="1200" placeholder="Condition, service history, papers, reason for selling…">${esc(d.description)}</textarea></div>
-      <div class="field"><label>Highlights</label><div class="checks">${HIGHLIGHT_OPTIONS.map(h=>`<label><input type="checkbox" data-hl="${esc(h)}" ${d.highlights.includes(h)?'checked':''}> ${esc(h)}</label>`).join('')}</div></div>
-      <div class="card" style="padding:14px;display:flex;gap:14px;align-items:center;margin-top:8px"><div style="width:120px;aspect-ratio:4/3;border-radius:10px;overflow:hidden;flex:none">${d.photos[0]?`<img src="${d.photos[0]}" style="width:100%;height:100%;object-fit:cover" alt="">`:VA.scene(VA.draw(d.category,d.subtype,d.color,+d.tyres||6))}</div>
-        <div style="min-width:0"><b>${esc(d.brand)} ${esc(d.model)}</b><div class="meta">${[d.year, +d.tyres?d.tyres+' Tyres':null, d.emission].filter(Boolean).map(esc).join('<i></i>')}</div><div class="muted" style="font-size:13px">${d.category==='trucks'?esc(subById(d.subtype)?.name||''):esc(catById(d.category)?.name||'')}</div></div></div>`;
+    return '';
   }
-  function validateStep(){
+
+  function validate(){
     const err = (k, m) => { throw new ApiError(m, k); };
-    if (step===1){ if(!d.category) err('category','Choose a vehicle type'); if(d.category==='trucks'&&!d.subtype) err('subtype','Choose a truck type'); if(!d.brand) err('brand','Choose a brand'); if(!String(d.model).trim()) err('model','Enter the model name'); }
-    if (step===2){ const y=new Date().getFullYear(); if(!(+d.year>=1990&&+d.year<=y)) err('year',`Enter a year between 1990 and ${y}`); if(d.km===''||+d.km<0) err('km', isHours()?'Enter hours used':'Enter KM driven'); if(d.regNo && !/^[A-Z]{2}\s?\d{1,2}\s?[A-Z]{0,3}\s?\d{1,4}$/i.test(d.regNo.trim())) err('regNo','Use the format TS 07 UF 1234'); }
-    if (step===4){ if(!(+d.price>=10000)) err('price','Enter a price of at least ₹10,000'); if(!String(d.city).trim()) err('city','Enter the city'); if(!d.state) err('state','Choose a state'); }
+    for (const f of fieldsOn()){
+      const v = getV(f);
+      const empty = f.type==='checks' ? !d.highlights.length : f.type==='photos' ? !d.photos.length : f.type==='tyres' ? (!+d.tyres && !isHours()) : (v===''||v==null);
+      if (f.required && f.type!=='toggle' && f.type!=='color' && empty) err(f.key, `${labelOf(f)} is required`);
+    }
+    const y = new Date().getFullYear();
+    if (!(+d.year>=1990 && +d.year<=y)) err('year', `Enter a year between 1990 and ${y}`);
+    if (d.km==='' || +d.km<0) err('km', isHours() ? 'Enter hours used' : 'Enter KM driven');
+    if (!(+d.price>=10000)) err('price', 'Enter a price of at least ₹10,000');
+    if (d.regNo && fieldByKey('regNo')?.enabled && !/^[A-Z]{2}\s?\d{1,2}\s?[A-Z]{0,3}\s?\d{1,4}$/i.test(d.regNo.trim())) err('regNo', 'Use the format TS 07 UF 1234');
   }
+
   return { nav:'sell', html: `${topbar({back: editing?'#/v/'+editing.id:'#/', title: editing?'Edit listing':'Sell your vehicle', sub: editing?editing.id:'Reach thousands of verified buyers'})}
-  <div class="wrap page" style="max-width:820px"><div class="stepper" data-stepper></div><div class="card panel" data-step></div>
-    <div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-ghost" data-prev style="flex:1">Back</button><button class="btn btn-primary" data-next style="flex:2">Continue</button></div></div>`,
+  <div class="wrap page" style="max-width:820px"><div data-step></div><div data-foot></div></div>`,
   mount(root){
-    const box = $('[data-step]',root);
+    const box = $('[data-step]',root), foot = $('[data-foot]',root);
     const draw = () => {
-      $('[data-stepper]',root).innerHTML = STEPS.map((s,i)=>`<div class="${i<step?'on':''}"><div class="bar"></div><small>${s}</small></div>`).join('');
-      box.innerHTML = stepHtml();
-      $('[data-prev]',root).style.visibility = step===1?'hidden':'visible';
-      $('[data-next]',root).innerHTML = step===4 ? (editing?`${I('check')} Save changes`:`${I('check')} Publish listing`) : 'Continue';
+      if (step === 1){
+        box.innerHTML = `<h2 style="margin:0 0 12px;font-size:20px">What are you selling?</h2><div class="pick-grid">${CATS.map(c=>`<button class="pick ${d.category===c.id?'on':''}" data-cat="${c.id}">${catArt(c.id, c.id==='trucks'?'lorries':null, c.id==='trucks'?'#1D4ED8':c.color)}${esc(c.name)}</button>`).join('')}</div>`;
+        foot.innerHTML = '';
+        $$('[data-cat]',box).forEach(b => b.onclick = () => { if (d.category !== b.dataset.cat){ d.category = b.dataset.cat; d.subtype = ''; d.brand = ''; d.tyres = ''; } saveDraft(); step = 2; draw(); scrollTo(0,0); });
+        return;
+      }
+      const cat = catById(d.category);
+      const sections = FORM_GROUPS.map(g => { const html = fieldsOn().filter(f=>f.group===g).map(fieldHtml).join(''); return html.trim() ? `<div class="card panel" style="margin-bottom:14px"><h2 style="margin:0 0 12px;font-size:18px">${FORM_TITLES[g]}</h2><div class="grid2">${html}</div></div>` : ''; }).join('');
+      box.innerHTML = `<div class="card panel" style="margin-bottom:14px;display:flex;align-items:center;gap:14px;padding:12px 16px"><div style="width:84px;flex:none">${catArt(cat.id, cat.id==='trucks'?(d.subtype||'lorries'):null, cat.id==='trucks'?'#1D4ED8':cat.color)}</div><div class="grow"><small class="muted">Selling</small><div><b style="font-size:17px">${esc(cat.name)}</b></div></div>${editing?'':'<button type="button" class="link" data-change>Change</button>'}</div>${sections}`;
+      foot.innerHTML = `<div style="display:flex;gap:10px;margin-top:6px"><button class="btn btn-ghost" data-prev style="flex:1">Back</button><button class="btn btn-primary" data-next style="flex:2">${editing?`${I('check')} Save changes`:`${I('check')} Publish listing`}</button></div>`;
       bind();
     };
     const bind = () => {
-      $$('[data-k]',box).forEach(i=>i.addEventListener('input',()=>{ d[i.dataset.k] = i.value; const e=$(`[data-err="${i.dataset.k}"]`,box); if(e) e.hidden=true; i.classList.remove('err');
-        if(i.dataset.k==='price'){ const h=$('[data-pricehint]',box); if(h) h.textContent = +i.value?`Shown as ${inr(+i.value)} (${inrShort(+i.value)})`:''; } saveDraft(); }));
-      $$('[data-cat]',box).forEach(b=>b.onclick=()=>{ if(d.category!==b.dataset.cat){ d.category=b.dataset.cat; d.subtype=''; d.brand=''; } saveDraft(); draw(); });
-      $$('[data-sub]',box).forEach(b=>b.onclick=()=>{ d.subtype=b.dataset.sub; d.brand=''; saveDraft(); draw(); });
-      $$('[data-brand]',box).forEach(b=>b.onclick=()=>{ d.brand=b.dataset.brand; saveDraft(); draw(); $('#s_model',box)?.focus(); });
-      $$('[data-color]',box).forEach(b=>b.onclick=()=>{ d.color=b.dataset.color; saveDraft(); draw(); });
-      $$('[data-rmph]',box).forEach(b=>b.onclick=()=>{ d.photos.splice(+b.dataset.rmph,1); draw(); });
-      $$('[data-cover]',box).forEach(b=>b.onclick=()=>{ const [p]=d.photos.splice(+b.dataset.cover,1); d.photos.unshift(p); draw(); });
-      const ph=$('[data-photos]',box); if(ph) ph.onchange = async e => { $('[data-uploading]',box).hidden=false;
+      $$('[data-fk]',box).forEach(i => {
+        const f = fieldByKey(i.dataset.fk);
+        i.addEventListener(i.tagName==='SELECT' ? 'change' : 'input', () => {
+          setV(f, i.value); const e = $(`[data-err="${f.key}"]`,box); if (e) e.hidden = true; i.classList.remove('err');
+          if (f.key==='price'){ const h=$('[data-pricehint]',box); if(h) h.textContent = +i.value ? `Shown as ${inr(+i.value)} (${inrShort(+i.value)})` : ''; }
+          saveDraft();
+          if (f.key==='subtype'){ d.brand = ''; d.tyres = ''; draw(); }
+          if (f.key==='brand') draw();
+        });
+      });
+      $$('[data-tg]',box).forEach(b => b.onclick = () => { const f = fieldByKey(b.dataset.tg); const on = !getV(f); setV(f, on); $('.toggle',b).classList.toggle('on', on); saveDraft(); });
+      $$('[data-hl]',box).forEach(c => c.onchange = () => { const s = new Set(d.highlights); c.checked ? s.add(c.dataset.hl) : s.delete(c.dataset.hl); d.highlights = [...s]; saveDraft(); });
+      $$('[data-color]',box).forEach(b => b.onclick = () => { d.color = b.dataset.color; saveDraft(); draw(); });
+      $$('[data-rmph]',box).forEach(b => b.onclick = () => { d.photos.splice(+b.dataset.rmph,1); draw(); });
+      $$('[data-cover]',box).forEach(b => b.onclick = () => { const [p] = d.photos.splice(+b.dataset.cover,1); d.photos.unshift(p); draw(); });
+      const ph = $('[data-photos]',box); if (ph) ph.onchange = async e => { $('[data-uploading]',box).hidden = false;
         for (const f of [...e.target.files].slice(0, 8-d.photos.length)) { try { d.photos.push(await compressImage(f, 1000, .7)); } catch(er){ toast(er.message,'bad'); } } draw(); };
-      const ng=$('[data-neg]',box); if(ng) ng.onclick=()=>{ d.negotiable=!d.negotiable; $('.toggle',ng).classList.toggle('on',d.negotiable); };
-      $$('[data-hl]',box).forEach(c=>c.onchange=()=>{ const s=new Set(d.highlights); c.checked?s.add(c.dataset.hl):s.delete(c.dataset.hl); d.highlights=[...s]; });
+      const ch = $('[data-change]',box); if (ch) ch.onclick = () => { step = 1; draw(); scrollTo(0,0); };
     };
-    const showErr = e => { const el=$(`[data-err="${e.field}"]`,box); if(el){ el.textContent=e.message; el.hidden=false; } const i=$(`[data-k="${e.field}"]`,box); if(i){ i.classList.add('err'); i.focus(); } else toast(e.message,'bad'); };
-    $('[data-prev]',root).onclick=()=>{ step=Math.max(1,step-1); draw(); scrollTo(0,0); };
-    $('[data-next]',root).onclick=async ()=>{
-      try { validateStep(); } catch(e){ return showErr(e); }
-      if (step<4){ step++; draw(); scrollTo(0,0); return; }
-      const btn=$('[data-next]',root); btn.disabled=true; btn.innerHTML='<span class="spin"></span> Saving…';
+    const showErr = e => { const el = $(`[data-err="${e.field}"]`,box); if (el){ el.textContent = e.message; el.hidden = false; el.scrollIntoView({block:'center', behavior:'smooth'}); } const i = $(`[data-fk="${e.field}"]`,box); if (i){ i.classList.add('err'); i.focus({preventScroll:true}); } if (!el) toast(e.message,'bad'); };
+    foot.onclick = async e => {
+      if (e.target.closest('[data-prev]')){ if (editing) go('#/v/'+editing.id); else { step = 1; draw(); scrollTo(0,0); } return; }
+      const btn = e.target.closest('[data-next]'); if (!btn) return;
+      try { validate(); } catch(er){ return showErr(er); }
+      btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Saving…';
       try {
         const l = editing ? await API.listings.update(editing.id, d) : await API.listings.create(d);
-        if (!editing) try{ localStorage.removeItem(DKEY); }catch(e){}
-        toast(editing?'Changes saved':'Listing published'); App.refreshBadges(); go('#/v/'+l.id);
-      } catch(e){ btn.disabled=false; draw(); if(e.field){ step = ['category','subtype','brand','model'].includes(e.field)?1:['year','km'].includes(e.field)?2:4; draw(); showErr(e);} else toast(e.message,'bad'); }
+        if (!editing) try { localStorage.removeItem(DKEY); } catch(er){}
+        toast(editing ? 'Changes saved' : 'Listing published'); App.refreshBadges(); go('#/v/'+l.id);
+      } catch(er){ draw(); if (er.field) showErr(er); else toast(er.message,'bad'); }
     };
     draw();
   }};
@@ -1838,7 +1880,7 @@ Views.auth = (_, q, mode='login', role='user') => {
 };
 /* ---- owner console ---- */
 Views.owner = ({tab='overview'}) => {
-  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests']];
+  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests'],['form','Sell form']];
   const me = API.auth.me();
   return { nav:'owner', html: `${topbar({title:'Owner dashboard', sub:`Signed in as ${me.email}`, right:`<button class="btn btn-ghost btn-sm" data-ologout>${I('logout','xs')} Log out</button>`})}
     <div class="wrap page"><div class="ptabs">${TABS.map(([k,n])=>`<a class="chip ${tab===k?'on':''}" href="#/owner/${k}">${n}</a>`).join('')}</div>
@@ -1923,6 +1965,67 @@ Views.owner = ({tab='overview'}) => {
         : emptyState('bank','No finance requests yet','Requests from buyers appear here.');
       $$('[data-fs]',body).forEach(s => s.onchange = async () => { await act(() => API.owner.patchFinance(s.closest('[data-fid]').dataset.fid, s.value), 'Status updated'); });
     }).catch(fail);
+
+    if (tab === 'form'){
+      const TYPE_LABEL = {subtype:'Dropdown (truck types)', brand:'Dropdown (brands)', text:'Short text', number:'Number', select:'Dropdown', textarea:'Long text', tyres:'Dropdown (tyres)', state:'Dropdown (states)', toggle:'Yes / No', checks:'Checklist', photos:'Photo upload', color:'Colour picker'};
+      const GROUP_LABEL = {vehicle:'Vehicle', details:'Details', media:'Photos', pricing:'Price & location'};
+      const REQUIRABLE = ['text','number','select','textarea','tyres','photos','checks'];
+      let fields = [];
+      const draw = () => {
+        body.innerHTML = `<div class="card panel" style="margin-bottom:6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>Sell form</b><div class="muted" style="font-size:13px">Choose what sellers fill in on the “Sell your vehicle” page. Changes apply immediately. Fields marked “Always on” are needed for every listing.</div></div><button class="btn btn-primary btn-sm" data-add>${I('plus','xs')} Add field</button></div>`
+        + ['vehicle','details','media','pricing'].map(g => { const rows = fields.filter(f => f.group===g);
+          return rows.length ? `<h3 style="margin:18px 0 8px;font-size:15px">${GROUP_LABEL[g]}</h3>` + rows.map((f,i) => `<div class="card my-row" data-fk="${esc(f.key)}" style="${f.enabled?'':'opacity:.65'}"><div class="mid">
+            <h4>${esc(f.label)} ${f.locked?`<span class="status closed">Always on</span>`:''}${f.builtin?'':' <span class="status contacted">Custom</span>'}${f.enabled?'':' <span class="status removed">Hidden</span>'}</h4>
+            <div class="muted" style="font-size:12.5px">${esc(TYPE_LABEL[f.type]||f.type)}${f.options.length?` · ${f.options.length} options`:''}</div></div>
+            <div class="acts" style="align-items:center">
+              <label class="chk"><input type="checkbox" data-t="enabled" ${f.enabled?'checked':''} ${f.locked?'disabled':''}> Shown</label>
+              ${REQUIRABLE.includes(f.type)?`<label class="chk"><input type="checkbox" data-t="required" ${f.required?'checked':''} ${f.locked||!f.enabled?'disabled':''}> Required</label>`:''}
+              <button class="btn btn-ghost btn-sm" data-a="up" ${i===0?'disabled':''} aria-label="Move up">↑</button><button class="btn btn-ghost btn-sm" data-a="down" ${i===rows.length-1?'disabled':''} aria-label="Move down">↓</button>
+              <button class="btn btn-ghost btn-sm" data-a="edit">${I('edit','xs')} Edit</button>${f.builtin?'':`<button class="btn btn-ghost btn-sm" data-a="delete" aria-label="Delete field">${I('trash','xs')}</button>`}
+            </div></div>`).join('') : ''; }).join('');
+      };
+      const load = () => API.owner.formFields().then(r => { fields = r; draw(); }).catch(fail);
+      const apply = (p, msg) => p.then(r => { fields = r; draw(); if (msg) toast(msg); }).catch(e => { toast(e.message,'bad'); load(); });
+      load();
+      const optsInput = (v='') => `<div class="field" data-opts><label for="ff_opts">Options <span class="muted">(one per line)</span></label><textarea class="input" id="ff_opts" name="options" rows="5">${esc(v)}</textarea><div class="err-msg" data-err="options" hidden></div></div>`;
+      const showErr = (f, er) => { const el = $(`[data-err="${er.field}"]`,f); if (el){ el.textContent = er.message; el.hidden = false; } else toast(er.message,'bad'); };
+      const lines = s => s.split('\n').map(x => x.trim()).filter(Boolean);
+      body.onclick = async e => {
+        if (e.target.closest('[data-add]')){
+          return openSheet(`<h3>Add a field</h3><form data-ff novalidate>
+            <div class="field"><label for="ff_label">Field name</label><input class="input" id="ff_label" name="label" placeholder="e.g. Permit valid until"><div class="err-msg" data-err="label" hidden></div></div>
+            <div class="field"><label for="ff_type">Field type</label><select class="input" id="ff_type" name="type">${[['text','Short text'],['number','Number'],['select','Dropdown'],['textarea','Long text'],['toggle','Yes / No']].map(([k,n])=>`<option value="${k}">${n}</option>`).join('')}</select></div>
+            <div class="field"><label for="ff_group">Show in section</label><select class="input" id="ff_group" name="group"><option value="details">Details</option><option value="pricing">Price & location</option></select></div>
+            <div data-optwrap hidden>${optsInput()}</div>
+            <label class="chk" style="display:flex;gap:8px;margin:6px 0 14px"><input type="checkbox" name="required"> Required</label>
+            <button class="btn btn-primary btn-block">Add field</button></form>`, (el, close) => {
+            const f = $('[data-ff]',el), tsel = f.type; const sync = () => { $('[data-optwrap]',el).hidden = tsel.value !== 'select'; };
+            tsel.onchange = sync;
+            f.onsubmit = ev => { ev.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true);
+              API.owner.addField({label:f.label.value, type:tsel.value, group:f.group.value, required:f.required.checked, options:lines(f.options.value)}).then(r => { fields = r; draw(); close(); toast('Field added'); }).catch(er => showErr(f, er)); };
+          });
+        }
+        const row = e.target.closest('[data-fk]'); if (!row) return; const key = row.dataset.fk; const fld = fields.find(x => x.key===key);
+        const a = e.target.closest('[data-a]')?.dataset.a;
+        if (a==='up' || a==='down') return apply(API.owner.moveField(key, a==='up' ? -1 : 1));
+        if (a==='delete'){ if (await confirmSheet({title:`Delete “${fld.label}”?`, body:'It is removed from the Sell form. Values sellers already entered stay saved but are no longer shown on listings.', ok:'Delete'})) apply(API.owner.deleteField(key), 'Field deleted'); return; }
+        if (a==='edit'){
+          const hasOpts = ['select','checks'].includes(fld.type), hasPh = ['text','number','textarea'].includes(fld.type);
+          openSheet(`<h3>Edit “${esc(fld.label)}”</h3><form data-ff novalidate>
+            <div class="field"><label for="ff_label">Field name</label><input class="input" id="ff_label" name="label" value="${esc(fld.label)}"><div class="err-msg" data-err="label" hidden></div></div>
+            ${hasPh?`<div class="field"><label for="ff_ph">Hint text <span class="muted">(shown inside the empty box)</span></label><input class="input" id="ff_ph" name="placeholder" value="${esc(fld.placeholder)}"></div>`:''}
+            ${hasOpts?optsInput(fld.options.join('\n')):''}
+            ${!fld.builtin?`<div class="field"><label for="ff_group">Show in section</label><select class="input" id="ff_group" name="group"><option value="details" ${fld.group==='details'?'selected':''}>Details</option><option value="pricing" ${fld.group==='pricing'?'selected':''}>Price & location</option></select></div>`:''}
+            <button class="btn btn-primary btn-block">Save</button></form>`, (el, close) => {
+            const f = $('[data-ff]',el);
+            f.onsubmit = ev => { ev.preventDefault(); $$('[data-err]',f).forEach(x=>x.hidden=true);
+              const p = {label:f.label.value}; if (f.placeholder) p.placeholder = f.placeholder.value; if (f.options) p.options = lines(f.options.value); if (f.group) p.group = f.group.value;
+              API.owner.patchField(key, p).then(r => { fields = r; draw(); close(); toast('Field updated'); }).catch(er => showErr(f, er)); };
+          });
+        }
+      };
+      body.onchange = e => { const t = e.target.closest('[data-t]'); if (!t) return; const key = t.closest('[data-fk]').dataset.fk; apply(API.owner.patchField(key, {[t.dataset.t]: t.checked}), t.dataset.t==='enabled' ? (t.checked ? 'Field shown' : 'Field hidden') : 'Saved'); };
+    }
   }};
 };
 Views.notFound = (msg='The page you are looking for does not exist.') => ({ nav:'home', html: `${topbar({back:'#/', title:'Not found'})}<div class="wrap page">${emptyState('search','Nothing here', msg, `<a href="#/" class="btn btn-primary">Go to home</a>`)}</div>`});
@@ -2025,6 +2128,7 @@ document.head.insertAdjacentHTML('beforeend', `<style>
 
 @media (max-width:959px){ .is-chat .chat-page{height:calc(100dvh - 64px)} }
 a.stat{display:block}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
 .role-switch{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0 18px}.role-switch+.tabs{margin-top:-4px}
 .role-switch a{display:flex;align-items:center;justify-content:center;gap:6px;height:44px;border:1px solid var(--line);border-radius:12px;font-weight:700;color:var(--ink-2)}
 .role-switch a.on{border-color:var(--primary);background:var(--primary-50);color:var(--primary)}

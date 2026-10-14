@@ -180,3 +180,54 @@ test('cross-origin writes are rejected', async () => {
   const res = await fetch(base + '/api/auth/logout', { method: 'POST', headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' }, body: '{}' });
   assert.equal(res.status, 403);
 });
+
+test('owner controls the sell form: add, require, hide, reorder, delete fields', async () => {
+  const o = client(), u = client(), anon = client();
+  await o('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'owner' });
+  await u('POST', '/api/auth/register', { ...newUser, email: 'form@example.com', phone: '9456789123' });
+
+  // everyone gets the form definition; ownership is no longer part of it
+  const defs = (await anon('GET', '/api/bootstrap')).data.formFields;
+  assert.ok(defs.some((f) => f.key === 'brand' && f.locked));
+  assert.ok(!defs.some((f) => /owner/i.test(f.key)));
+
+  // only the owner can change it
+  assert.equal((await u('POST', '/api/owner/form-fields', { label: 'X', type: 'text' })).status, 403);
+
+  // add a required custom dropdown
+  const add = await o('POST', '/api/owner/form-fields', { label: 'Permit type', type: 'select', group: 'details', required: true, options: ['National', 'State'] });
+  assert.equal(add.status, 201);
+  const custom = add.data.fields.find((f) => f.label === 'Permit type');
+  assert.equal(custom.builtin, false);
+  assert.equal((await o('POST', '/api/owner/form-fields', { label: 'Bad', type: 'select', options: ['only one'] })).status, 400);
+
+  const base = { ...vehicle, regNo: '', price: 450000 };
+  const missing = await u('POST', '/api/listings', base);
+  assert.equal(missing.status, 400);
+  assert.equal(missing.data.field, custom.key);
+  assert.equal((await u('POST', '/api/listings', { ...base, extras: { [custom.key]: 'Other' } })).status, 400); // not in options
+  const ok = await u('POST', '/api/listings', { ...base, extras: { [custom.key]: 'National' } });
+  assert.equal(ok.status, 201);
+  assert.equal(ok.data.listing.extras[custom.key], 'National');
+
+  // make an optional built-in required, then hide it again
+  await o('PATCH', '/api/owner/form-fields/regNo', { required: true });
+  assert.equal((await u('POST', '/api/listings', { ...base, extras: { [custom.key]: 'State' } })).data.field, 'regNo');
+  await o('PATCH', '/api/owner/form-fields/regNo', { enabled: false });
+  assert.equal((await u('POST', '/api/listings', { ...base, extras: { [custom.key]: 'State' } })).status, 201);
+
+  // locked fields can't be hidden / made optional / deleted; built-ins can't be deleted
+  assert.equal((await o('PATCH', '/api/owner/form-fields/brand', { enabled: false })).status, 403);
+  assert.equal((await o('PATCH', '/api/owner/form-fields/price', { required: false })).status, 403);
+  assert.equal((await o('DELETE', '/api/owner/form-fields/regNo')).status, 403);
+  assert.equal((await o('PATCH', '/api/owner/form-fields/brand', { label: 'Make' })).data.fields.find((f) => f.key === 'brand').label, 'Make');
+
+  // reorder within a section
+  const before = (await o('GET', '/api/owner/form-fields')).data.fields.filter((f) => f.group === 'details').map((f) => f.key);
+  const after = (await o('POST', '/api/owner/form-fields/fuel/move', { dir: -1 })).data.fields.filter((f) => f.group === 'details').map((f) => f.key);
+  assert.equal(after.indexOf('fuel'), before.indexOf('fuel') - 1);
+
+  // deleting the custom field stops requiring it
+  assert.equal((await o('DELETE', `/api/owner/form-fields/${custom.key}`)).status, 200);
+  assert.equal((await u('POST', '/api/listings', base)).status, 201);
+});
