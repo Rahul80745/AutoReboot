@@ -146,6 +146,7 @@ a{color:inherit;text-decoration:none}
 .hero{position:relative;border-radius:var(--r-lg);overflow:hidden;margin-top:14px;aspect-ratio:16/8.4;min-height:230px;max-height:430px;width:100%;background:#cfe4f5;box-shadow:var(--shadow)}
 .hero-slide{position:absolute;inset:0;opacity:0;transition:opacity .7s ease}
 .hero-slide.on{opacity:1}
+.hero-veh{position:absolute;bottom:13%;height:auto;filter:drop-shadow(0 10px 8px rgba(16,27,59,.30));pointer-events:none}
 .hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero-slide svg.scene{position:absolute;inset:0;width:100%;height:100%}
 .hero-copy{position:absolute;left:0;top:0;bottom:0;width:min(560px,62%);padding:clamp(18px,4vw,40px);display:flex;flex-direction:column;justify-content:center;color:#101B3B;background:linear-gradient(90deg,rgba(255,255,255,.88),rgba(255,255,255,.55) 70%,transparent)}
@@ -513,6 +514,40 @@ textarea.input{height:auto;padding:12px 14px;resize:vertical;min-height:110px}
 .drawer a:hover{background:var(--line-2)}
 .footer{color:var(--ink-3);font-size:13px;text-align:center;padding:26px 0 6px}
 
+/* vehicle photos */
+.veh-photo{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 8px 8px rgba(16,27,59,.25))}
+.cat .art{height:76px}
+.pick .veh-photo{height:84px;margin-bottom:6px}
+.type-row .pic .veh-photo{height:auto;max-height:130px}
+img.veh-ph{object-fit:contain!important;padding:5% 7%;background:radial-gradient(120% 90% at 50% 0%,#F4F8FF 0%,#E4ECF7 100%)}
+:root[data-theme="dark"] img.veh-ph{background:radial-gradient(120% 90% at 50% 0%,#232B47 0%,#171D33 100%)}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) img.veh-ph{background:radial-gradient(120% 90% at 50% 0%,#232B47 0%,#171D33 100%)}}
+
+/* ---------- 3-second intro ---------- */
+#intro{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;overflow:hidden;background:radial-gradient(120% 90% at 50% 40%,#1A2350 0%,#0B1030 70%);animation:inOut .55s ease 2.45s forwards}
+#intro .in-glow{position:absolute;inset:0;background:radial-gradient(circle at 50% 46%,rgba(229,25,77,.5),transparent 58%);opacity:0;animation:inGlow 3s ease forwards}
+#intro .in-streaks i{position:absolute;left:0;height:3px;border-radius:3px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);transform:translateX(-130%);animation:inStreak .7s cubic-bezier(.3,.1,.2,1) forwards}
+#intro .in-streaks i:nth-child(1){top:22%;width:46vw;animation-delay:.25s}
+#intro .in-streaks i:nth-child(2){top:31%;width:30vw;animation-delay:.4s;background:linear-gradient(90deg,transparent,#FF4A78,transparent)}
+#intro .in-streaks i:nth-child(3){top:63%;width:52vw;animation-delay:.3s}
+#intro .in-streaks i:nth-child(4){top:72%;width:34vw;animation-delay:.5s;background:linear-gradient(90deg,transparent,#FF4A78,transparent)}
+#intro .in-streaks i:nth-child(5){top:80%;width:42vw;animation-delay:.35s}
+#intro .in-stage{position:relative;width:min(86vw,640px);padding-bottom:46px}
+#intro .in-logo{animation:inPop .6s cubic-bezier(.3,1.4,.5,1) 1.7s both}
+#intro .in-logo img{display:block;width:100%;height:auto;clip-path:inset(0 100% 0 0);animation:inReveal .7s cubic-bezier(.4,0,.45,1) .92s forwards}
+#intro .in-road{position:absolute;left:0;right:0;bottom:0;height:5px;border-radius:5px;background:repeating-linear-gradient(90deg,rgba(255,255,255,.55) 0 26px,transparent 26px 48px);opacity:0;animation:inRoad .4s ease .2s forwards,inDash .5s linear .2s 4}
+#intro .in-truck{position:absolute;left:0;bottom:-2px;width:58%;max-width:380px;transform:translateX(-120vw);filter:drop-shadow(0 14px 14px rgba(0,0,0,.45));animation:inDrive 1.5s cubic-bezier(.42,.02,.38,1) .3s forwards}
+#intro .in-skip{position:absolute;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));color:rgba(255,255,255,.6);font-size:12.5px;font-weight:700;letter-spacing:.04em;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.08)}
+@keyframes inDrive{0%{transform:translateX(-120vw)}100%{transform:translateX(120vw)}}
+@keyframes inReveal{to{clip-path:inset(0 0 0 0)}}
+@keyframes inPop{0%{transform:scale(.96)}100%{transform:scale(1)}}
+@keyframes inStreak{0%{transform:translateX(-130%);opacity:1}100%{transform:translateX(260%);opacity:0}}
+@keyframes inGlow{0%{opacity:0}30%{opacity:1}100%{opacity:.75}}
+@keyframes inRoad{to{opacity:1}}
+@keyframes inDash{to{background-position:48px 0}}
+@keyframes inOut{to{opacity:0;transform:scale(1.05);visibility:hidden}}
+@media (prefers-reduced-motion: reduce){#intro{display:none}}
+
 /* =====================================================================
    DESIGN v2 — rounded, soft, modern. Sits on top of the base styles above.
    ===================================================================== */
@@ -741,6 +776,17 @@ textarea.input{border-radius:18px}
 </style>
 </head>
 <body>
+<div id="intro" aria-hidden="true">
+  <div class="in-glow"></div>
+  <div class="in-streaks"><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="in-stage">
+    <div class="in-logo"><img src="/brand/logo-dark-full.png" alt="" width="900" height="206"></div>
+    <div class="in-road"></div>
+    <img class="in-truck" src="/brand/vehicles/lorry.webp" alt="" width="300" height="191">
+  </div>
+  <button class="in-skip" type="button">Skip ›</button>
+</div>
+<script>try{if(sessionStorage.getItem('ar_intro')||matchMedia('(prefers-reduced-motion: reduce)').matches){document.getElementById('intro').remove()}}catch(e){}</script>
 <div id="app"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div id="layer"></div>
@@ -1052,9 +1098,14 @@ function artFor(l, view='side'){
   }
 }
 const ART_VIEWS = ['side','flip','rear','interior','cab','dusk'];
-function imgsOf(l){ return (l.photos && l.photos.length) ? l.photos : ART_VIEWS.map(v=>'art:'+l.id+':'+v); }
+function imgsOf(l){
+  if (l.photos && l.photos.length) return l.photos;
+  const k = photoKey(l.category, l.subtype);          // no seller photos yet: show a clean photo of that kind of vehicle
+  return k ? ['photo:'+k] : ART_VIEWS.map(v=>'art:'+l.id+':'+v);
+}
 function renderImg(ref, alt=''){
   if (!ref) return '';
+  if (ref.startsWith('photo:')) return `<img class="veh-ph" src="${photoUrl(ref.slice(6))}" alt="${esc(alt)}" loading="lazy" decoding="async">`;
   if (ref.startsWith('art:')){
     const [,id,view] = ref.split(':'); const l = API.listings.get(id);
     return l ? artFor(l, view) : '';
@@ -1062,7 +1113,13 @@ function renderImg(ref, alt=''){
   return `<img src="${esc(ref)}" alt="${esc(alt)}" loading="lazy">`;
 }
 const cover = l => renderImg(imgsOf(l)[0], l.title);
+/* Real vehicle photos (transparent cut-outs) replace the cartoon illustrations where we have one. */
+const CAT_PHOTO = {'mini-trucks':'mini-truck', tractors:'tractor', buses:'bus', construction:'excavator', farm:'harvester', 'three-wheeler':'three-wheeler'};
+const photoKey = (cat, sub) => cat === 'trucks' ? (!sub || sub === 'lorries' || sub === 'trailers' ? 'lorry' : null) : (CAT_PHOTO[cat] || null);
+const photoUrl = k => `/brand/vehicles/${k}.webp`;
 function catArt(cat, sub, color){
+  const k = photoKey(cat, sub);
+  if (k) return `<img class="veh-photo" src="${photoUrl(k)}" alt="" loading="lazy" decoding="async">`;
   return `<svg viewBox="-6 8 252 112" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${VA.draw(cat, sub, color, 10)}</svg>`;
 }
 
@@ -1464,6 +1521,13 @@ function bottomNav(active){
 }
 
 /* ------------------------------ HERO ART ---------------------------- */
+/* [photo, left %, width %, stacking] for each default hero slide */
+const HERO_PHOTOS = [
+  [['excavator',72,26,1],['tractor',57,20,2],['lorry',38,28,3]],
+  [['three-wheeler',70,24,1],['mini-truck',47,30,2]],
+  [['harvester',72,26,1],['bus',44,34,2]],
+  [['excavator',46,26,1],['lorry',62,32,2],['tractor',80,18,3]],
+];
 function heroScene(v){
   const id = svgId();
   const sky = [['#7DB8E8','#CFE6F7','#F4E9D8'],['#F2A47A','#F8CFAE','#FBE6D4'],['#8EC5EA','#D8ECF8','#EEF6FB'],['#6FA9DB','#C3DDF2','#EAF2F8']][v];
@@ -1478,14 +1542,15 @@ function heroScene(v){
     [['trucks','tankers','#E5194D',400,232,1.15],['trucks','lorries','#1F5FD1',620,228,1.2],['mini-trucks',null,'#3B82F6',840,262,.95]],
     [['construction',null,'#F2B705',430,222,1.2],['trucks','tippers','#D63A2F',650,226,1.25],['trucks','special','#D62B2B',860,250,.95]],
   ][v];
-  const veh = sets.map(([c,s,col,x,y,sc]) => `<g transform="translate(${x-120*sc} ${y-60*sc}) scale(${sc})">${VA.draw(c,s,col,10)}</g>`).join('');
+  const veh = '';   // vehicles are real photos now (see HERO_PHOTOS), the SVG only draws sky, skyline, crane and road
+  const photos = (HERO_PHOTOS[v] || []).map(([k,left,w,z]) => `<img class="hero-veh" src="${photoUrl(k)}" alt="" style="left:${left}%;width:${w}%;z-index:${z}" decoding="async"${v?' loading="lazy"':''}>`).join('');
   return `<svg class="scene" viewBox="0 0 1000 420" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
     <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky[0]}"/><stop offset=".65" stop-color="${sky[1]}"/><stop offset="1" stop-color="${sky[2]}"/></linearGradient></defs>
     <rect width="1000" height="420" fill="url(#${id})"/>${v===1?'<circle cx="760" cy="120" r="46" fill="#FFE3AE" opacity=".9"/>':''}
     ${sk}${v===0||v===3?crane:''}
     <rect y="296" width="1000" height="14" fill="#86B27A"/><rect y="310" width="1000" height="110" fill="#6E727C"/><rect y="310" width="1000" height="4" fill="#C3C8D0"/>
     <g fill="#ECEFF3">${[20,140,260,380,500,620,740,860,980].map(x=>`<rect x="${x}" y="392" width="70" height="5" rx="2"/>`).join('')}</g>
-    <g transform="translate(0 40)">${veh}</g></svg>`;
+    <g transform="translate(0 40)">${veh}</g></svg>${photos}`;
 }
 const HERO = [
   {h:'India’s trusted marketplace for commercial vehicles', p:'Buy or sell verified commercial vehicles easily and securely.', cta:'Start browsing', href:'#/buy'},
@@ -2506,6 +2571,14 @@ a.stat{display:block}
 </style>`);
 
 /* boot */
+(function introControl(){
+  const intro = document.getElementById('intro'); if (!intro) return;
+  try { sessionStorage.setItem('ar_intro', '1'); } catch(e){}          // play once per browser session
+  const done = () => intro.remove();
+  intro.addEventListener('click', () => { intro.style.transition = 'opacity .25s'; intro.style.opacity = '0'; setTimeout(done, 260); });
+  setTimeout(done, 3200);
+})();
+
 (async function boot(){
   try { const t = localStorage.getItem('autoreboot_theme'); if (t) document.documentElement.dataset.theme = t; } catch(e){}
   try { await Sync.pull(); }

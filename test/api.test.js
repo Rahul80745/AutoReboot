@@ -504,3 +504,14 @@ test('brand assets: logo files, favicon, share image URL', async () => {
   const manifest = await (await fetch(base + '/site.webmanifest')).json();
   assert.equal(manifest.short_name, 'Autoreboot');
 });
+
+test('vehicle photos and intro animation are served', async () => {
+  for (const f of ['lorry', 'mini-truck', 'tractor', 'bus', 'excavator', 'harvester', 'three-wheeler']) {
+    const r = await fetch(`${base}/brand/vehicles/${f}.webp`);
+    assert.equal(r.status, 200, f);
+    assert.equal(r.headers.get('content-type'), 'image/webp', f);
+  }
+  const html = await (await fetch(base + '/')).text();
+  assert.match(html, /id="intro"/);
+  assert.match(html, /\/brand\/logo-dark-full\.png/);
+});
