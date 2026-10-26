@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -160,7 +161,13 @@ export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken, m
     });
     next();
   });
-  app.get('/favicon.ico', (req, res) => res.status(204).end());
+  app.get('/favicon.ico', (req, res) => res.sendFile(path.join(here, '..', 'public', 'brand', 'favicon.png')));
+  // index.html is templated so the share-preview image gets an absolute URL for this host
+  const indexHtml = fs.readFileSync(path.join(here, '..', 'public', 'index.html'), 'utf8');
+  app.get(['/', '/index.html'], (req, res) => {
+    res.set({ 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.send(indexHtml.replaceAll('__ORIGIN__', `${req.protocol}://${req.get('host')}`));
+  });
   app.get('/healthz', (req, res) => { db.prepare('SELECT 1').get(); res.json({ ok: true }); }); // used by hosting health checks
   // private entry point for the owner; it is not linked from anywhere in the public site
   app.get(['/owner', '/owner/'], (req, res) => res.redirect(302, '/#/owner/login'));
@@ -811,7 +818,8 @@ export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken, m
   /* ------------------------------ static + errors ------------------------ */
   app.use(express.static(path.join(here, '..', 'public'), {
     extensions: ['html'], index: 'index.html',
-    setHeaders: (res) => res.set('Cache-Control', 'no-cache'), // the whole app is one file; always revalidate so deploys show up
+    // the app shell must always revalidate so deploys show up; logos and icons can be cached for a day
+    setHeaders: (res, file) => res.set('Cache-Control', /\.(png|webp|svg|ico)$/.test(file) ? 'public, max-age=86400' : 'no-cache'),
   }));
 
   // eslint-disable-next-line no-unused-vars

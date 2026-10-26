@@ -4,6 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Autoreboot · Commercial Vehicle Marketplace</title>
+<meta name="description" content="Buy, sell and finance trucks, tractors, buses and construction machines across India.">
+<meta name="theme-color" content="#E5194D">
+<link rel="icon" type="image/png" href="/brand/favicon.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Autoreboot">
+<meta property="og:title" content="Autoreboot · Commercial Vehicle Marketplace">
+<meta property="og:description" content="Buy, sell and finance trucks, tractors, buses and construction machines across India.">
+<meta property="og:image" content="__ORIGIN__/brand/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -520,7 +531,18 @@ body{background:radial-gradient(900px 420px at 85% -80px,rgba(229,25,77,.07),tra
 .topbar{border-bottom:0;border-radius:0 0 26px 26px;box-shadow:0 8px 28px -14px rgba(16,27,59,.18);background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(16px) saturate(1.3)}
 .gbar{border-bottom:0;box-shadow:0 8px 28px -14px rgba(16,27,59,.18)}
 .icon-btn{border-radius:16px}
-.brand-mark .logo{border-radius:13px;background:var(--grad);box-shadow:var(--glow)}
+.brand-mark{font-size:0}
+.logo-img{display:block;height:44px;width:auto}
+.logo-img.dk{display:none}
+:root[data-theme="dark"] .logo-img.lt{display:none}
+:root[data-theme="dark"] .logo-img.dk{display:block}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .logo-img.lt{display:none}:root:not([data-theme="light"]) .logo-img.dk{display:block}}
+.logo-img.on-dark{display:block!important;height:46px}
+.m-brand{display:flex;justify-content:center;padding:10px 0 2px}
+.m-brand .logo-img{height:34px}
+@media (min-width:960px){.m-brand{display:none}}
+.footer{text-align:center}
+.footer .logo-img{display:block}
 
 /* buttons, chips, inputs */
 .btn{border-radius:999px;height:48px;padding:0 24px;letter-spacing:.005em}
@@ -1384,6 +1406,7 @@ function lightbox(refs, i=0){
 }
 const go = h => { if (location.hash === h) App.render(); else location.hash = h; };
 function needLogin(next){ toast('Log in to continue'); go('#/login?next=' + encodeURIComponent(next || location.hash)); }
+const logoPair = () => `<img class="logo-img lt" src="/brand/logo.png" alt="Autoreboot" width="174" height="40"><img class="logo-img dk" src="/brand/logo-dark.png" alt="Autoreboot" width="174" height="40">`;
 const brandLogo = (b, size=84) => { const m=BRAND_META[b]||{mono:b.slice(0,2),color:'#374151',label:b}; return `<div class="brand-logo" style="width:${size}px;height:${size}px;color:${m.color}">${esc(m.mono)}<span style="color:var(--ink-2)">${esc(m.label.split(' ')[0])}</span></div>`; };
 const avatar = (u, cls='') => u ? `<div class="avatar ${cls}" style="background:${u.color}">${esc(u.name.split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase())}</div>` : `<div class="avatar ghost ${cls}">${I('user')}</div>`;
 const metaLine = parts => `<div class="meta">${parts.filter(Boolean).map(esc).join('<i></i>')}</div>`;
@@ -1423,7 +1446,7 @@ function globalBar(active){
   const me = API.auth.me(); const isOwner = API.auth.isOwner();
   const link = (h, n, k) => `<a href="${h}" class="${active===k?'on':''}">${n}</a>`;
   return `<div class="gbar"><div class="wrap topbar-in">
-    <a href="#/" class="brand-mark"><span class="logo">${I('truck','sm')}</span>Autoreboot</a>
+    <a href="#/" class="brand-mark" aria-label="Autoreboot home">${logoPair()}</a>
     <nav class="desk-nav">${link('#/','Home','home')}${link('#/buy','Buy','buy')}${link('#/search','Search','search')}${isOwner ? link('#/owner','Owner dashboard','owner') : link('#/sell','Sell','sell')+link('#/messages','Messages','messages')}</nav>
     <div style="flex:1"></div>
     ${isOwner ? '' : `<a href="#/messages" class="icon-btn" aria-label="Messages">${I('msg')}<span data-badge="msgdot"></span></a>${favBellRight()}`}
@@ -1485,9 +1508,10 @@ Views.home = () => {
   const total = API.listings.count({});
   return { nav:'home', html: `
   <div class="wrap page" style="padding-top:4px">
+    <a href="#/" class="m-brand" aria-label="Autoreboot home">${logoPair()}</a>
     <div class="home-top">
       <button class="icon-btn" data-drawer aria-label="Menu">${I('menu')}</button>
-      <form class="searchbar" data-search role="search">${I('search','sm')}<input name="q" type="search" placeholder="Search trucks, tractors, buses…" aria-label="Search vehicles"><span class="sep"></span><button type="button" class="icon-btn" data-home-filter aria-label="Filters">${I('filter')}</button></form>
+      <form class="searchbar" data-search role="search">${I('search','sm')}<input name="q" type="search" placeholder="Search vehicles…" aria-label="Search vehicles"><span class="sep"></span><button type="button" class="icon-btn" data-home-filter aria-label="Filters">${I('filter')}</button></form>
       <span class="home-icons">${favBellRight()}</span>
     </div>
     <section class="hero" aria-roledescription="carousel">
@@ -1509,7 +1533,7 @@ Views.home = () => {
       <div><span class="t-ic">${I('lock','lg')}</span>Private chat, number stays hidden</div>
       <div><span class="t-ic">${I('headset','lg')}</span>Finance and support team</div>
     </div>
-    <div class="footer">Autoreboot · Commercial vehicle marketplace</div>
+    <div class="footer"><img class="logo-img lt" src="/brand/mark.png" alt="" width="46" height="30" style="height:26px;margin:0 auto 6px"><div>Autoreboot · Commercial vehicle marketplace</div></div>
   </div>`,
   mount(root){
     let i = 0, timer;
@@ -2105,7 +2129,7 @@ Views.auth = (_, q, mode='login', role='user') => {
     <g fill="#ECEFF3" opacity=".5">${[20,120,220,320,420,520].map(x=>`<rect x="${x}" y="270" width="50" height="4" rx="2"/>`).join('')}</g>
     <g transform="translate(-10 120) scale(1.05)">${VA.draw('trucks','tippers','#E9B21C',10)}</g><g transform="translate(250 112) scale(1.15)">${VA.draw('trucks','lorries','#E5194D',10)}</g></svg>`;
   return { bare:true, html: `<div class="auth">
-    <div class="auth-art"><a href="#/" class="brand-mark" style="position:relative"><span class="logo">${I('truck','sm')}</span>Autoreboot</a>
+    <div class="auth-art"><a href="#/" class="brand-mark" style="position:relative" aria-label="Autoreboot home"><img class="logo-img on-dark" src="/brand/logo-dark.png" alt="Autoreboot" width="320" height="73"></a>
       <h2>${isOwner?'Run the marketplace.':mode==='login'?'Welcome back to the yard.':'Buy and sell commercial vehicles with confidence.'}</h2><p>${isOwner?'Review listings, manage members and follow up on finance requests from the owner console.':'Trucks, tippers, tractors, buses and machines from verified sellers across India — with private chat and finance help built in.'}</p>${authScene}</div>
     <div class="auth-card">
       <a href="#/" class="link" style="color:var(--ink-2)">${I('back','xs')} Continue browsing</a>

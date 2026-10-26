@@ -489,3 +489,18 @@ test('owner chooses which blocks of the vehicle page are shown', async () => {
   await o('PUT', '/api/owner/layout', { hidden: [] });
   assert.deepEqual((await anon('GET', '/api/bootstrap')).data.layoutHidden, []);
 });
+
+test('brand assets: logo files, favicon, share image URL', async () => {
+  const html = await (await fetch(base + '/')).text();
+  assert.match(html, /<link rel="icon" type="image\/png" href="\/brand\/favicon.png">/);
+  assert.match(html, new RegExp(`og:image" content="${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/brand/og-image.png"`));
+  assert.ok(!html.includes('__ORIGIN__'));
+  for (const f of ['logo.png', 'logo-dark.png', 'logo-full.png', 'icon.png', 'favicon.png', 'apple-touch-icon.png', 'og-image.png']) {
+    const r = await fetch(`${base}/brand/${f}`);
+    assert.equal(r.status, 200, f);
+    assert.equal(r.headers.get('content-type'), 'image/png', f);
+  }
+  assert.equal((await fetch(base + '/favicon.ico')).status, 200);
+  const manifest = await (await fetch(base + '/site.webmanifest')).json();
+  assert.equal(manifest.short_name, 'Autoreboot');
+});
