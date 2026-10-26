@@ -1,0 +1,31 @@
+# Render Blueprint: Render dashboard → New → Blueprint → pick this repo (and branch).
+# Uses a paid "starter" instance because a persistent disk is required to keep the SQLite database
+# across deploys. (On the free plan the database is wiped on every restart.)
+services:
+  - type: web
+    name: autoreboot
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: autoreboot-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.0
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: DATABASE_FILE
+        value: /var/data/autoreboot.db
+      - key: SEED_DEMO
+        value: "false"          # set to "true" to start with demo listings and the demo user
+      - key: OWNER_EMAIL
+        sync: false             # Render asks for this when you create the Blueprint
+      - key: OWNER_PASSWORD
+        sync: false             # at least 8 characters; used only when no owner exists yet
