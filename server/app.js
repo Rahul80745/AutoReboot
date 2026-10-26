@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  db, tx, uid, notify, ensureFormFields, allFormFields, publicBanners, allBanners, userRow, publicUserRow, listingRow, chatRow, messageRow, notificationRow, financeRow,
+  db, tx, uid, notify, ensureFormFields, allFormFields, publicBanners, allBanners, getSetting, setSetting, userRow, publicUserRow, listingRow, chatRow, messageRow, notificationRow, financeRow,
 } from './db.js';
 import {
   COOKIE, hashPassword, verifyPassword, newSalt, createSession, destroySession, destroyUserSessions,
@@ -12,6 +12,8 @@ import {
 import { scheduleBotReply } from './bot.js';
 import { subscribe, publish } from './realtime.js';
 import { verifyGoogleIdToken } from './google.js';
+import { createMailer, detailsEmail } from './mailer.js';
+import { LAYOUT_BLOCKS, LAYOUT_KEYS } from './layout-defaults.js';
 import {
   CATEGORY_IDS, CAT_PREFIX, SPEC_DEFAULTS, STATES, subById,
 } from './catalog.js';
@@ -127,7 +129,7 @@ function validateListing(d, fields, prev = null) {
 }
 
 /* -------------------------------- app ---------------------------------- */
-export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken } = {}) {
+export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken, mailer = createMailer() } = {}) {
   ensureFormFields();
   const app = express();
   app.disable('x-powered-by');
@@ -322,7 +324,8 @@ export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken } 
     const changed = db.prepare(`SELECT l.* FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible} AND l.updated_at >= ?`)
       .all(meId, lsince).map(listingRow);
 
-    const out = { now: Date.now(), demo, googleClientId: process.env.GOOGLE_CLIENT_ID || '', user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields(), banners: publicBanners() };
+    const out = { now: Date.now(), demo, googleClientId: process.env.GOOGLE_CLIENT_ID || '', user: me ? userRow(me) : null, listings: changed, listingIds: ids, formFields: allFormFields(), banners: publicBanners(), layoutHidden: getSetting('detail_layout_hidden', []) };
+    if (me && me.role === 'owner') out.ownerCounts = { financeNew: db.prepare("SELECT COUNT(*) c FROM finance_requests WHERE status = 'new'").get().c };
     const userIds = new Set(db.prepare(`SELECT DISTINCT l.seller_id id FROM listings l JOIN users u ON u.id = l.seller_id WHERE ${visible}`).all(meId).map((r) => r.id));
     if (me && me.role === 'user') {
       const chats = db.prepare(`SELECT * FROM chats WHERE (buyer_id = ? AND buyer_hidden = 0) OR (seller_id = ? AND seller_hidden = 0) ORDER BY updated_at DESC`).all(meId, meId);
@@ -506,17 +509,52 @@ export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken } 
     if (city.length < 2) throw bad('Enter your city', 'city');
     if (!STATES.includes(b.state)) throw bad('Select your state', 'state');
     if (!/^[1-9]\d{5}$/.test(pin)) throw bad('Enter a valid 6 digit pincode', 'pincode');
-    const l = db.prepare("SELECT id,title FROM listings WHERE id = ? AND status != 'removed'").get(str(b.listingId, 30));
+    const email = str(b.email, 120).toLowerCase();
+    if (!EMAIL_RE.test(email)) throw bad('Enter a valid email address', 'email');
+    const l = db.prepare("SELECT id,title,price FROM listings WHERE id = ? AND status != 'removed'").get(str(b.listingId, 30));
     if (!l) throw new HttpError(404, 'This vehicle is no longer available');
     if (db.prepare('SELECT 1 FROM finance_requests WHERE user_id = ? AND listing_id = ? AND created_at > ?').get(req.user.id, l.id, Date.now() - 864e5)) {
       throw bad('You already requested finance for this vehicle today. Our team will call you soon.');
     }
     const id = uid('f_');
-    db.prepare(`INSERT INTO finance_requests (id,user_id,listing_id,name,age,mobile,city,state,pincode,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`)
-      .run(id, req.user.id, l.id, name, Math.trunc(age), mobile, city, b.state, pin, Date.now());
+    db.prepare(`INSERT INTO finance_requests (id,user_id,listing_id,name,age,mobile,city,state,pincode,email,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(id, req.user.id, l.id, name, Math.trunc(age), mobile, city, b.state, pin, email, Date.now());
     notify(req.user.id, { title: 'Finance request received', body: `For ${l.title}. Our finance team will call you within 24 hours.`, link: '#/profile/finance', icon: 'bank' });
+    // show up live on every owner dashboard, then e-mail the details (never blocks or fails the request)
+    for (const o of db.prepare("SELECT id FROM users WHERE role = 'owner' AND status = 'active'").all()) publish(o.id, 'sync');
+    sendFinanceMails({ id, name, age: Math.trunc(age), mobile, email, city, state: b.state, pincode: pin }, l, `${req.protocol}://${req.get('host')}`);
     res.status(201).json({ request: financeRow(db.prepare('SELECT * FROM finance_requests WHERE id = ?').get(id)) });
   }));
+
+  /** Who gets the "new finance request" e-mail: NOTIFY_EMAIL (comma separated) or any owner login that is a real address. */
+  const ownerRecipients = () => {
+    const configured = String(process.env.NOTIFY_EMAIL || '').split(',').map((e) => e.trim()).filter((e) => EMAIL_RE.test(e));
+    if (configured.length) return configured;
+    return db.prepare("SELECT email FROM users WHERE role = 'owner'").all().map((r) => r.email).filter((e) => EMAIL_RE.test(e));
+  };
+  async function sendFinanceMails(r, listing, origin) {
+    const when = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST';
+    const rows = [
+      ['Name', r.name], ['Age', String(r.age)], ['Mobile', r.mobile], ['Email', r.email], ['City', `${r.city}, ${r.state}`], ['Pincode', r.pincode],
+      ['Vehicle', `${listing.title} (${listing.id})`], ['Listed price', '₹' + Number(listing.price).toLocaleString('en-IN')],
+      ['Vehicle link', `${origin}/#/v/${listing.id}`], ['Submitted', when],
+    ];
+    let status = 'skipped';
+    try {
+      const to = ownerRecipients();
+      if (mailer.enabled && to.length) {
+        const m = detailsEmail('New finance request', `${r.name} asked for finance help on ${listing.title}.`, rows, `Manage it in the owner dashboard → Finance requests: ${origin}/owner`);
+        status = await mailer.send({ to, subject: `New finance request: ${listing.title} (${listing.id})`, replyTo: r.email, ...m });
+      }
+    } catch (e) { status = 'failed'; console.error('finance e-mail to owner failed:', e.message); }
+    try { db.prepare('UPDATE finance_requests SET mail_status = ? WHERE id = ?').run(status, r.id); } catch { /* row may be gone */ }
+    try { // confirmation copy for the customer
+      if (mailer.enabled) {
+        const c = detailsEmail('We received your finance request', 'Thank you! Our finance team will call you within 24 hours. This is what you sent us:', rows);
+        await mailer.send({ to: r.email, subject: `Your finance request for ${listing.title}`, ...c });
+      }
+    } catch (e) { console.error('finance confirmation e-mail failed:', e.message); }
+  }
 
   /* -------------------------------- owner -------------------------------- */
   const owner = express.Router();
@@ -628,6 +666,15 @@ export function createApp({ demo = true, googleVerifier = verifyGoogleIdToken } 
     res.json({ ok: true });
   });
 
+
+  /* ---- owner: which blocks of the vehicle page are shown ---- */
+  owner.get('/layout', (req, res) => res.json({ blocks: LAYOUT_BLOCKS, hidden: getSetting('detail_layout_hidden', []) }));
+  owner.put('/layout', (req, res) => {
+    const hidden = [...new Set((Array.isArray(req.body.hidden) ? req.body.hidden : []).map(String))];
+    if (hidden.some((k) => !LAYOUT_KEYS.has(k))) throw bad('Unknown layout option');
+    setSetting('detail_layout_hidden', hidden);
+    res.json({ blocks: LAYOUT_BLOCKS, hidden });
+  });
 
   /* ---- owner: home-page banner (hero) ads ---- */
   const cleanLink = (v) => {

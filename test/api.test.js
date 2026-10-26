@@ -12,10 +12,10 @@ const base = `http://127.0.0.1:${server.address().port}`;
 test.after(() => server.close());
 
 /** minimal cookie-jar client */
-function client() {
+function client(origin = base) {
   let cookie = '';
   const f = async (method, url, body) => {
-    const res = await fetch(base + url, {
+    const res = await fetch(origin + url, {
       method,
       headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -139,7 +139,7 @@ test('demo dealer auto-replies', async () => {
 test('finance request → owner follow-up notifies the user', async () => {
   const u = client(), o = client();
   await u('POST', '/api/auth/login', { id: 'other@example.com', password: 'secret123', as: 'user' });
-  const body = { name: 'Other Person', age: 34, mobile: '9234567891', city: 'Pune', state: 'Maharashtra', pincode: '411001', listingId: 'LOR123456' };
+  const body = { name: 'Other Person', age: 34, mobile: '9234567891', email: 'other@gmail.com', city: 'Pune', state: 'Maharashtra', pincode: '411001', listingId: 'LOR123456' };
   assert.equal((await u('POST', '/api/finance', { ...body, pincode: '12' })).data.field, 'pincode');
   assert.equal((await u('POST', '/api/finance', body)).status, 201);
   assert.equal((await u('POST', '/api/finance', body)).status, 400); // duplicate same day
@@ -427,4 +427,65 @@ test('chat is realtime: instant push, typing indicator and seen receipts', async
     const spy = client(); await spy('POST', '/api/auth/register', { ...newUser, email: 'rt-spy@example.com', phone: '9111111103' });
     assert.equal((await spy('POST', `/api/chats/${chatId}/typing`)).status, 404);
   } finally { sellerStream.close(); buyerStream.close(); }
+});
+
+test('finance request: email field, owner e-mail alert with details, live owner update', async () => {
+  const sent = [];
+  const mailer = { enabled: true, send: async (m) => { sent.push(m); return 'sent'; } };
+  process.env.NOTIFY_EMAIL = 'shop@gmail.com, second@gmail.com';
+  const srv2 = createApp({ demo: false, mailer }).listen(0);
+  const o2 = `http://127.0.0.1:${srv2.address().port}`;
+  const u = client(o2), o = client(o2);
+  try {
+    await u('POST', '/api/auth/register', { ...newUser, email: 'fin@example.com', phone: '9677000001' });
+    await o('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'owner' });
+    const body = { name: 'Fin Buyer', age: 40, mobile: '9677000001', email: 'fin.buyer@gmail.com', city: 'Hyderabad', state: 'Telangana', pincode: '500001', listingId: 'TIP123450' };
+    assert.equal((await u('POST', '/api/finance', { ...body, email: 'nope' })).data.field, 'email');
+    assert.equal((await u('POST', '/api/finance', { ...body, email: '' })).data.field, 'email');
+
+    // owner's dashboard is told instantly
+    const stream = await (async () => { const c = new AbortController(); const r = await fetch(o2 + '/api/events', { headers: { cookie: o.cookie() }, signal: c.signal }); const rd = r.body.getReader(); let buf = ''; return { c, wait: async (re) => { const end = Date.now() + 3000; while (Date.now() < end) { if (re.test(buf)) return; const x = await Promise.race([rd.read(), new Promise((r2) => setTimeout(() => r2(null), 150))]); if (x && x.value) buf += Buffer.from(x.value).toString(); } throw new Error('no sync event: ' + buf); } }; })();
+    await stream.wait(/event: hello/);
+    const made = await u('POST', '/api/finance', body);
+    assert.equal(made.status, 201);
+    assert.equal(made.data.request.email, 'fin.buyer@gmail.com');
+    await stream.wait(/event: sync/);
+    stream.c.abort();
+    await new Promise((r) => setTimeout(r, 150));
+
+    assert.equal(sent.length, 2); // one to the owner(s), one confirmation to the customer
+    const ownerMail = sent.find((m) => Array.isArray(m.to));
+    assert.deepEqual(ownerMail.to, ['shop@gmail.com', 'second@gmail.com']);
+    assert.match(ownerMail.subject, /New finance request/);
+    for (const needle of ['Fin Buyer', '9677000001', 'fin.buyer@gmail.com', 'Hyderabad', '500001', 'TIP123450']) assert.ok(ownerMail.text.includes(needle), needle);
+    assert.equal(ownerMail.replyTo, 'fin.buyer@gmail.com');
+    assert.equal(sent.find((m) => m.to === 'fin.buyer@gmail.com').subject.includes('finance request'), true);
+
+    const list = (await o('GET', '/api/owner/finance')).data.requests;
+    const row = list.find((r) => r.email === 'fin.buyer@gmail.com');
+    assert.equal(row.mailStatus, 'sent');
+    assert.ok((await o('GET', '/api/bootstrap')).data.ownerCounts.financeNew >= 1);
+
+    // a failing mail provider never breaks the request, and the owner can see it failed
+    mailer.send = async () => { throw new Error('provider down'); };
+    const u2 = client(o2); await u2('POST', '/api/auth/register', { ...newUser, email: 'fin2@example.com', phone: '9677000002' });
+    assert.equal((await u2('POST', '/api/finance', { ...body, listingId: 'LOR123456', mobile: '9677000002' })).status, 201);
+    await new Promise((r) => setTimeout(r, 150));
+    assert.ok((await o('GET', '/api/owner/finance')).data.requests.some((r) => r.mailStatus === 'failed'));
+  } finally { srv2.close(); delete process.env.NOTIFY_EMAIL; }
+});
+
+test('owner chooses which blocks of the vehicle page are shown', async () => {
+  const o = client(), u = client(), anon = client();
+  await o('POST', '/api/auth/login', { id: 'boss@example.com', password: 'ownerpass1', as: 'owner' });
+  await u('POST', '/api/auth/register', { ...newUser, email: 'lay@example.com', phone: '9677000003' });
+  assert.deepEqual((await anon('GET', '/api/bootstrap')).data.layoutHidden, []);
+  assert.equal((await u('PUT', '/api/owner/layout', { hidden: ['views'] })).status, 403);
+  const defs = (await o('GET', '/api/owner/layout')).data;
+  assert.ok(defs.blocks.some((b) => b.key === 'spec_engine') && defs.blocks.some((b) => b.key === 'finance'));
+  assert.equal((await o('PUT', '/api/owner/layout', { hidden: ['nonsense'] })).status, 400);
+  assert.deepEqual((await o('PUT', '/api/owner/layout', { hidden: ['views', 'row_regno_typo'.replace('_regno_typo', '_reg'), 'views'] })).data.hidden, ['views', 'row_reg']);
+  assert.deepEqual((await anon('GET', '/api/bootstrap')).data.layoutHidden, ['views', 'row_reg']);
+  await o('PUT', '/api/owner/layout', { hidden: [] });
+  assert.deepEqual((await anon('GET', '/api/bootstrap')).data.layoutHidden, []);
 });

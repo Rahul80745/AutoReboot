@@ -76,6 +76,23 @@ write checks role and ownership on the server; uploaded images are validated as 
 
 Only run **one replica**: SQLite and the in-memory live-chat streams belong to a single instance.
 
+### E-mail alerts for finance requests
+When a buyer submits the finance form (name, age, mobile, **email**, city, state, pincode) it appears instantly in
+**Owner dashboard → Finance requests** (with a red counter on the tab and a pop-up) and, if configured, is e-mailed to you with all
+the details; the buyer gets a confirmation copy.
+
+1. Create a free account at [resend.com](https://resend.com) → **API Keys** → create a key.
+2. Railway **Variables**: `RESEND_API_KEY` = the key, `NOTIFY_EMAIL` = your inbox (e.g. `you@gmail.com`; comma-separate several).
+3. Redeploy. Each request row in the dashboard shows **Mail sent / Mail failed / No mail** so you can see if delivery worked.
+
+Note: until you verify your own domain in Resend, mails come from `onboarding@resend.dev` and Resend only delivers to the e-mail address you
+signed up with — so use that address for `NOTIFY_EMAIL` while testing (customer confirmation copies need a verified domain and `MAIL_FROM`).
+HTTPS (not SMTP) is used on purpose, because Railway blocks SMTP on trial/hobby plans.
+
+### Owner controls
+- **Listing page:** show or hide any part of the vehicle page (quick-facts items, table rows, highlights, similar vehicles, view counter, buttons…).
+- **Sell form:** fields buyers fill in. **Banners:** home-page slideshow.
+
 ### Continue with Google
 1. [Google Cloud Console](https://console.cloud.google.com/) → *APIs & Services → Credentials → Create credentials → OAuth client ID* → **Web application**.
 2. Add your site (for example `https://your-app.up.railway.app`, and `http://localhost:3000` for local testing) under **Authorized JavaScript origins**.

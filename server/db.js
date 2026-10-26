@@ -170,7 +170,13 @@ CREATE TABLE IF NOT EXISTS banners (
 );
 `);
 
+db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+
 // migrations for databases created by earlier versions
+if (!db.prepare('PRAGMA table_info(finance_requests)').all().some((c) => c.name === 'email')) {
+  db.exec("ALTER TABLE finance_requests ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+  db.exec("ALTER TABLE finance_requests ADD COLUMN mail_status TEXT NOT NULL DEFAULT 'skipped'");
+}
 if (!db.prepare('PRAGMA table_info(users)').all().some((c) => c.name === 'google_sub')) db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google ON users(google_sub) WHERE google_sub IS NOT NULL');
 if (!db.prepare('PRAGMA table_info(listings)').all().some((c) => c.name === 'extras')) {
@@ -245,7 +251,7 @@ export const notificationRow = (n) => n && ({
 
 export const financeRow = (r) => r && ({
   id: r.id, userId: r.user_id, listingId: r.listing_id, name: r.name, age: r.age, mobile: r.mobile,
-  city: r.city, state: r.state, pincode: r.pincode, status: r.status, createdAt: r.created_at,
+  city: r.city, state: r.state, pincode: r.pincode, email: r.email || '', mailStatus: r.mail_status || 'skipped', status: r.status, createdAt: r.created_at,
 });
 
 export function notify(userId, n) {
@@ -271,3 +277,10 @@ export const bannerRow = (b) => b && ({
 });
 export const publicBanners = () => db.prepare(`SELECT ${BANNER_COLS} FROM banners WHERE enabled = 1 ORDER BY sort, created_at`).all().map(bannerRow);
 export const allBanners = () => db.prepare(`SELECT ${BANNER_COLS} FROM banners ORDER BY sort, created_at`).all().map(bannerRow);
+
+export const getSetting = (key, fallback) => {
+  const r = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  if (!r) return fallback;
+  try { return JSON.parse(r.value); } catch { return fallback; }
+};
+export const setSetting = (key, value) => db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));

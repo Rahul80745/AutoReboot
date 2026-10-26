@@ -501,6 +501,221 @@ textarea.input{height:auto;padding:12px 14px;resize:vertical;min-height:110px}
 .drawer a{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;font-weight:600}
 .drawer a:hover{background:var(--line-2)}
 .footer{color:var(--ink-3);font-size:13px;text-align:center;padding:26px 0 6px}
+
+/* =====================================================================
+   DESIGN v2 — rounded, soft, modern. Sits on top of the base styles above.
+   ===================================================================== */
+:root{
+  --r-sm:14px; --r:20px; --r-lg:28px; --r-xl:34px;
+  --grad:linear-gradient(135deg,#FF4A78 0%,#E5194D 52%,#C40F3E 100%);
+  --grad-soft:linear-gradient(135deg,#FFF1F4 0%,#FFFFFF 70%);
+  --shadow-sm:0 1px 2px rgba(16,27,59,.05),0 2px 6px rgba(16,27,59,.04);
+  --shadow:0 6px 24px -8px rgba(16,27,59,.14),0 2px 6px rgba(16,27,59,.04);
+  --shadow-lg:0 28px 60px -18px rgba(16,27,59,.30);
+  --glow:0 10px 24px -8px rgba(229,25,77,.55);
+}
+body{background:radial-gradient(900px 420px at 85% -80px,rgba(229,25,77,.07),transparent 60%),radial-gradient(700px 380px at -10% 0,rgba(37,99,235,.06),transparent 55%),var(--bg);background-attachment:fixed}
+
+/* top bars */
+.topbar{border-bottom:0;border-radius:0 0 26px 26px;box-shadow:0 8px 28px -14px rgba(16,27,59,.18);background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(16px) saturate(1.3)}
+.gbar{border-bottom:0;box-shadow:0 8px 28px -14px rgba(16,27,59,.18)}
+.icon-btn{border-radius:16px}
+.brand-mark .logo{border-radius:13px;background:var(--grad);box-shadow:var(--glow)}
+
+/* buttons, chips, inputs */
+.btn{border-radius:999px;height:48px;padding:0 24px;letter-spacing:.005em}
+.btn-primary{background:var(--grad);color:#fff;border:0;box-shadow:var(--glow)}
+.btn-primary:hover{background:var(--grad);filter:brightness(1.06);transform:translateY(-1px)}
+.btn-outline{background:var(--surface);color:var(--primary);border:1.5px solid color-mix(in srgb,var(--primary) 32%,var(--line))}
+.btn-outline:hover{background:var(--primary-50);border-color:var(--primary)}
+.btn-ghost{background:var(--line-2);border-radius:999px}
+.btn-sm{height:38px;padding:0 16px;font-size:13.5px}
+.chip{border-radius:999px;height:38px;padding:0 16px;border-color:transparent;background:var(--surface);box-shadow:var(--shadow-sm)}
+.chip.on{background:var(--grad);box-shadow:var(--glow)}
+.input,.ifield .ctl,.sel select,.searchbar{border-radius:16px}
+.input{border-width:1.5px;background:var(--surface)}
+.input:focus,.ifield .ctl:focus-within{box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 14%,transparent)}
+textarea.input{border-radius:18px}
+
+/* cards & panels */
+.card{border-radius:var(--r);border-color:color-mix(in srgb,var(--line) 75%,transparent);box-shadow:var(--shadow)}
+.panel{border-radius:var(--r-lg)}
+.card.panel,.panel.card{padding:22px}
+.sec-head h2{font-size:20px;letter-spacing:-.02em}
+
+/* home */
+.searchbar{border:0;box-shadow:var(--shadow);height:54px;background:var(--surface)}
+.hero{border-radius:var(--r-xl);box-shadow:var(--shadow-lg);margin-top:16px}
+.hero-copy{padding:clamp(20px,4.5vw,48px)}
+.hero-copy h2{font-weight:800;letter-spacing:-.03em}
+.hero-copy .btn{height:46px}
+.hero-dots{bottom:16px;background:rgba(255,255,255,.55);backdrop-filter:blur(8px);padding:6px 10px;border-radius:999px}
+.hero-dots button{background:rgba(16,27,59,.25)}
+.cats{gap:12px}
+.cat{border-radius:24px;border-color:transparent;box-shadow:var(--shadow);background:var(--surface)}
+.cat:hover{border-color:transparent;transform:translateY(-4px);box-shadow:var(--shadow-lg)}
+.cat .art{border-radius:16px}
+.bs{border-radius:var(--r-lg);border:0;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.bs.buy{background:linear-gradient(135deg,#FFE9EF 0%,#FFF7F9 100%)}
+.bs.sell{background:linear-gradient(135deg,#E3F6EA 0%,#F5FCF8 100%)}
+.bs .circ{box-shadow:0 10px 22px -8px rgba(16,27,59,.35)}
+.bs.buy .circ{background:var(--grad)}
+.bs.sell .circ{background:linear-gradient(135deg,#27B766,#138A43)}
+.mini,.lcard{border-radius:var(--r);border-color:transparent;box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s}
+.mini:hover,.lcard:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg)}
+.mini .thumb{border-radius:var(--r) var(--r) 0 0}
+.lcard .thumb{border-radius:16px;overflow:hidden}
+.lc-in{padding:12px}
+.brand-pill{border-radius:999px}
+.tag-new{border-radius:999px}
+.heart{box-shadow:0 4px 12px -4px rgba(16,27,59,.35)}
+.trust{border-radius:var(--r-lg)}
+.type-row,.brand-row{border-radius:var(--r-lg);border-color:transparent;box-shadow:var(--shadow)}
+.type-row .go{background:var(--grad);color:#fff;box-shadow:var(--glow)}
+
+/* floating bottom navigation */
+.bottom-nav{left:12px;right:12px;bottom:calc(10px + env(safe-area-inset-bottom,0px));border:1px solid color-mix(in srgb,var(--line) 70%,transparent);border-radius:28px;max-width:560px;margin:0 auto;box-shadow:0 18px 40px -14px rgba(16,27,59,.35);background:color-mix(in srgb,var(--surface) 90%,transparent);backdrop-filter:blur(18px) saturate(1.3);padding-bottom:0}
+.bottom-nav-in{height:64px}
+.bn.on{color:var(--primary)}
+.bn-sell span.plus{background:var(--grad);box-shadow:var(--glow);margin-top:-26px;width:54px;height:54px}
+#app{padding-bottom:calc(var(--nav-h) + 30px)}
+
+/* vehicle page */
+.gallery{border-radius:var(--r-xl);box-shadow:var(--shadow-lg);overflow:hidden}
+.thumbs button{border-radius:16px}
+.side-card{border-radius:var(--r-xl);padding:24px;box-shadow:var(--shadow-lg)}
+.side-card .price{font-size:34px;letter-spacing:-.02em}
+.specs{border-radius:var(--r-lg);box-shadow:var(--shadow);border-color:transparent}
+.det-cols.one{grid-template-columns:1fr}
+.kv{border-radius:12px}
+.posted{border-radius:999px}
+.hl{padding:6px 0}
+.avatar{box-shadow:0 4px 12px -4px rgba(16,27,59,.3)}
+
+/* forms & sheets */
+.sheet{border-radius:30px 30px 0 0;box-shadow:var(--shadow-lg)}
+@media (min-width:700px){.sheet{border-radius:30px}}
+.overlay{backdrop-filter:blur(6px)}
+.pick{border-radius:22px;border-color:transparent;box-shadow:var(--shadow);transition:transform .15s,box-shadow .15s}
+.pick:hover{transform:translateY(-3px)}
+.pick.on{box-shadow:0 0 0 2.5px var(--primary),var(--glow)}
+.photos .ph,.photos label.add{border-radius:20px;overflow:hidden}
+.checks label{border-radius:16px}
+.toggle{border-radius:999px}
+.perks{border-radius:var(--r-lg)}
+.important{border-radius:18px}
+.notice{border-radius:18px}
+.empty .em-ic{border-radius:28px}
+
+/* auth */
+.auth-art{border-radius:var(--r-xl);box-shadow:var(--shadow-lg)}
+.auth-card{background:var(--surface);border-radius:var(--r-xl);padding:28px;box-shadow:var(--shadow-lg)}
+.tabs{border-radius:999px}
+.tabs button{border-radius:999px}
+.role-switch a{border-radius:999px}
+
+/* chat */
+.chat-head .vcard,.safety{border-radius:var(--r)}
+.bubble{border-radius:20px}
+.msg-row.me .bubble{border-bottom-right-radius:6px}
+.msg-row:not(.me) .bubble{border-bottom-left-radius:6px}
+.composer .box{border-radius:999px}
+.composer .send{background:var(--grad);box-shadow:var(--glow)}
+.quick button{border-radius:999px}
+.conv{border-radius:0}
+
+/* profile, owner */
+.prof-head{border-radius:var(--r-xl);box-shadow:var(--shadow)}
+.stat{border-radius:18px}
+.my-row{border-radius:var(--r)}
+.my-row .thumb{border-radius:16px}
+.status{border-radius:999px}
+.set-row{border-radius:0}
+.ostat{border-radius:24px;padding:18px 20px;box-shadow:var(--shadow);border-color:transparent}
+.ostat b{font-size:30px}
+.count-pill{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--primary);color:#fff;font-size:11px;font-weight:800;margin-left:4px}
+.chip.on .count-pill{background:#fff;color:var(--primary)}
+.lay-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid var(--line-2);cursor:pointer;font-weight:600;font-size:14.5px}
+.lay-row:first-child{border-top:0}
+#toast .toast{border-radius:999px;box-shadow:var(--shadow-lg)}
+.drawer{border-radius:0 28px 28px 0}
+.lightbox>div>*{border-radius:20px}
+.menu-pop{border-radius:18px}
+.footer{opacity:.7}
+
+/* ===================== phones: smaller type, tighter spacing ===================== */
+@media (max-width:600px){
+  body{font-size:14px}
+  .wrap{padding:0 14px}
+  .topbar-in{height:56px;gap:8px}
+  .topbar h1{font-size:16.5px}
+  .topbar .sub{font-size:11.5px}
+  .icon-btn{width:38px;height:38px;border-radius:14px}
+  .h-xl{font-size:23px}
+  .lead{font-size:13.5px}
+  .sec-head{margin:22px 0 10px}
+  .sec-head h2{font-size:16.5px}
+  .link{font-size:12.5px}
+  .btn{height:44px;font-size:13.5px;padding:0 18px}
+  .btn-sm{height:34px;font-size:12.5px;padding:0 13px}
+  .chip{height:34px;font-size:12.5px;padding:0 13px}
+  .input,select.input{font-size:14.5px}
+  .field label,.ifield .ctl label{font-size:12.5px}
+  .searchbar{height:48px}
+  .searchbar input{font-size:13.5px}
+  .hero{border-radius:24px;min-height:190px}
+  .hero-copy{width:84%;padding:16px 16px 28px}
+  .hero-copy h2{font-size:clamp(17px,5.6vw,22px);margin-bottom:6px}
+  .hero-copy p{font-size:12px;margin-bottom:10px;line-height:1.4}
+  .hero-copy .btn{height:36px;font-size:12.5px;padding:0 16px}
+  .cats{gap:8px}
+  .cat{font-size:11.5px;border-radius:20px}
+  /* Buy + Sell side by side */
+  .bs-row{grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  .bs{flex-direction:column;align-items:flex-start;gap:8px;padding:14px;border-radius:22px}
+  .bs .circ{width:42px;height:42px}
+  .bs .circ .ic{width:22px;height:22px}
+  .bs h3{font-size:17px;margin:0}
+  .bs p{font-size:11.5px;line-height:1.35}
+  .bs .arr{display:none}
+  .trust{padding:10px 4px}
+  .trust>div{font-size:11.5px;padding:4px 8px;gap:7px}
+  .lcard h3{font-size:14.5px}
+  .lcard .price,.price{font-size:16px}
+  .lcard .loc,.lcard .ago,.meta{font-size:12px}
+  .lc-in{gap:12px;padding:10px}
+  .mini h4{font-size:13px}
+  .mini .price{font-size:15px}
+  .recent{grid-auto-columns:minmax(168px,1fr)}
+  .det-title{font-size:20px}
+  .side-card{padding:18px;border-radius:26px}
+  .side-card .price{font-size:28px}
+  .specs{padding:12px 6px}
+  .spec small{font-size:11px}
+  .spec b{font-size:13px}
+  .panel h3{font-size:15px}
+  .card.panel,.panel.card{padding:16px}
+  .hl,.kv{font-size:13px}
+  .posted{font-size:11.5px}
+  .cta-row .btn{font-size:13.5px}
+  .auth-card{padding:20px;border-radius:28px}
+  .auth-card h1{font-size:24px}
+  .tabs button{height:36px;font-size:13px}
+  .bubble{font-size:13.5px}
+  .conv h4{font-size:14px}
+  .conv .last{font-size:12.5px}
+  .prof-head h2{font-size:18px}
+  .set-row b{font-size:14px}
+  .ostat b{font-size:24px}
+  .bn{font-size:10.5px}
+  .bottom-nav{left:10px;right:10px}
+  .toast{font-size:13px}
+}
+@media (max-width:380px){
+  .hero-copy h2{font-size:17px}
+  .bs p{display:none}
+  .cat{font-size:10.5px}
+}
 </style>
 </head>
 <body>
@@ -906,7 +1121,7 @@ const SWATCHES = ['#F3F4F7','#1F5FD1','#E9B21C','#D63A2F','#1BA39C','#E2541B','#
    that is hydrated from /api/bootstrap and polled, so views can stay synchronous. */
 class ApiError extends Error { constructor(msg, field){ super(msg); this.field = field; } }
 
-const Store = { ready:false, me:null, demo:false, formFields:[], banners:[], googleClientId:'', users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
+const Store = { ready:false, me:null, demo:false, formFields:[], banners:[], googleClientId:'', layoutHidden:[], ownerCounts:{financeNew:0}, users:{}, listings:[], favorites:[], chats:[], messages:[], notifications:[], finance:[], ls:0, ms:0, skew:0 };
 const serverNow = () => Date.now() + Store.skew;
 
 async function http(method, url, body){
@@ -928,7 +1143,8 @@ const Sync = {
   apply(d){
     const prevMe = Store.me && Store.me.id, prevMsgs = Store.messages.length, prevNoti = Store.notifications.length, prevChats = Store.chats.length;
     const prevReads = Store.chats.reduce((s,c) => s + (c.otherRead||0), 0);
-    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.banners = d.banners || []; Store.googleClientId = d.googleClientId || ''; Store.demo = !!d.demo; Store.me = d.user;
+    Store.skew = d.now - Date.now(); if (d.formFields) Store.formFields = d.formFields; Store.banners = d.banners || []; Store.googleClientId = d.googleClientId || ''; Store.layoutHidden = d.layoutHidden || [];
+    const prevFin = Store.ownerCounts.financeNew; Store.ownerCounts = d.ownerCounts || {financeNew:0}; Store.demo = !!d.demo; Store.me = d.user;
     Store.users = {}; (d.users||[]).forEach(u => Store.users[u.id] = u);
     const keep = new Set(d.listingIds), byId = new Map(Store.listings.filter(l => keep.has(l.id)).map(l => [l.id, l]));
     d.listings.forEach(l => { const old = byId.get(l.id); byId.set(l.id, old ? {...l, views:Math.max(l.views, old.views||0)} : l); });
@@ -942,7 +1158,7 @@ const Sync = {
     Realtime.sync();
     const readChanged = Store.chats.reduce((s,c) => s + (c.otherRead||0), 0) !== prevReads;
     if (Store.messages.length !== prevMsgs) Object.keys(API.chats.typing).forEach(k => { API.chats.typing[k] = false; }); // a message arrived: they stopped typing
-    return { signedOut: !!prevMe && !Store.me, readChanged, newMsgs: Store.messages.length !== prevMsgs, newNoti: Store.notifications.length !== prevNoti, chatsChanged: Store.chats.length !== prevChats };
+    return { signedOut: !!prevMe && !Store.me, readChanged, financeUp: !!prevMe && Store.ownerCounts.financeNew > prevFin, newMsgs: Store.messages.length !== prevMsgs, newNoti: Store.notifications.length !== prevNoti, chatsChanged: Store.chats.length !== prevChats };
   },
   pull(){
     if (this.inflight){ this.again = true; return this.inflight; }
@@ -956,6 +1172,7 @@ const Sync = {
     if (ch.signedOut){ toast('You have been signed out','bad'); App.render(); return; }
     App.refreshBadges();
     const h = location.hash;
+    if (ch.financeUp){ toast('New finance request received'); if (h === '#/owner' || h === '#/owner/overview' || h === '#/owner/finance') App.render(); }
     if ((ch.newMsgs || ch.readChanged) && h.startsWith('#/chat/') && App.chatDraw) App.chatDraw();
     else if ((ch.newMsgs || ch.newNoti || ch.chatsChanged) && (h === '#/messages' || h === '#/notifications')) App.render();
   },
@@ -964,7 +1181,7 @@ const Sync = {
 /* Realtime: a Server-Sent Events stream tells us the instant something arrives, so chat is live. */
 const Realtime = {
   es:null, up:false, timers:{},
-  sync(){ const want = !!Store.me && Store.me.role === 'user'; if (want && !this.es) this.open(); else if (!want && this.es) this.close(); },
+  sync(){ const want = !!Store.me; if (want && !this.es) this.open(); else if (!want && this.es) this.close(); },
   open(){
     if (!window.EventSource) return;
     const es = this.es = new EventSource('/api/events');
@@ -1119,6 +1336,8 @@ const API = (() => {
     patchField: (key, p) => http('PATCH', `/api/owner/form-fields/${encodeURIComponent(key)}`, p).then(r => (Store.formFields = r.fields)),
     moveField: (key, dir) => http('POST', `/api/owner/form-fields/${encodeURIComponent(key)}/move`, {dir}).then(r => (Store.formFields = r.fields)),
     deleteField: key => http('DELETE', `/api/owner/form-fields/${encodeURIComponent(key)}`).then(r => (Store.formFields = r.fields)),
+    layout: () => http('GET', '/api/owner/layout'),
+    saveLayout: hidden => http('PUT', '/api/owner/layout', {hidden}).then(r => { Store.layoutHidden = r.hidden; return r; }),
     banners: () => http('GET', '/api/owner/banners').then(r => r.banners),
     addBanner: p => http('POST', '/api/owner/banners', p).then(r => r.banners),
     patchBanner: (id, p) => http('PATCH', `/api/owner/banners/${encodeURIComponent(id)}`, p).then(r => r.banners),
@@ -1268,7 +1487,7 @@ Views.home = () => {
   <div class="wrap page" style="padding-top:4px">
     <div class="home-top">
       <button class="icon-btn" data-drawer aria-label="Menu">${I('menu')}</button>
-      <form class="searchbar" data-search role="search">${I('search','sm')}<input name="q" type="search" placeholder="Search trucks, mini trucks, tractors, buses and more..." aria-label="Search vehicles"><span class="sep"></span><button type="button" class="icon-btn" data-home-filter aria-label="Filters">${I('filter')}</button></form>
+      <form class="searchbar" data-search role="search">${I('search','sm')}<input name="q" type="search" placeholder="Search trucks, tractors, buses…" aria-label="Search vehicles"><span class="sep"></span><button type="button" class="icon-btn" data-home-filter aria-label="Filters">${I('filter')}</button></form>
       <span class="home-icons">${favBellRight()}</span>
     </div>
     <section class="hero" aria-roledescription="carousel">
@@ -1443,12 +1662,19 @@ Views.details = ({id}) => {
   const imgs = imgsOf(l);
   const similar = API.listings.querySync({category:l.category, subtype:l.subtype||undefined}).filter(x=>x.id!==l.id).slice(0,8);
   const backTo = l.category==='trucks' ? `#/list/trucks/${l.subtype}` : `#/list/${l.category}/_`;
-  const specs = [['gauge',usageLabel(l),usageFmt(l)],['engine','Engine',l.engine],['bolt','Power',l.power],['weight',l.category==='buses'?'Seating':'Load Capacity',l.load],['pin','Location',`${l.city}, ${STATE_CODE[l.state]||''}`]];
-  const kv = [['Brand',(BRAND_META[l.brand]||{label:l.brand}).label.replace(' Motors','')],['Model',l.model],['Year',l.year],['Registration',l.regNo||'—'],['Emission Norm',l.emission],['Body Type',l.body],[l.category==='buses'?'Seating':'Load Capacity',l.load],l.tyres?['No. of Tyres',l.tyres+((l.highlights||[]).includes('New Tyres')?' (New Tyres)':'')]:null,[usageLabel(l),usageFmt(l)],['Engine',l.engine],['Power',l.power],['Fuel Type',l.fuel],['Transmission',l.transmission],...Store.formFields.filter(f=>!f.builtin && l.extras && l.extras[f.key]!==undefined && l.extras[f.key]!=='').map(f=>[f.label, typeof l.extras[f.key]==='boolean' ? (l.extras[f.key]?'Yes':'No') : l.extras[f.key]])].filter(x => x && x[1] !== '' && x[1] != null);
+  const hid = k => Store.layoutHidden.includes(k);
+  const has = x => x[2] !== '' && x[2] != null;
+  const specs = [['spec_usage','gauge',usageLabel(l),usageFmt(l)],['spec_engine','engine','Engine',l.engine],['spec_power','bolt','Power',l.power],['spec_load','weight',l.category==='buses'?'Seating':'Load Capacity',l.load],['spec_location','pin','Location',`${l.city}, ${STATE_CODE[l.state]||''}`]]
+    .filter(x => !hid(x[0]) && x[3] !== '' && x[3] != null);
+  const custom = hid('row_custom') ? [] : Store.formFields.filter(f=>!f.builtin && l.extras && l.extras[f.key]!==undefined && l.extras[f.key]!=='').map(f=>['row_custom', f.label, typeof l.extras[f.key]==='boolean' ? (l.extras[f.key]?'Yes':'No') : l.extras[f.key]]);
+  const kv = [['row_brand','Brand',(BRAND_META[l.brand]||{label:l.brand}).label.replace(' Motors','')],['row_model','Model',l.model],['row_year','Year',l.year],['row_reg','Registration',l.regNo||'—'],['row_emission','Emission Norm',l.emission],['row_body','Body Type',l.body],['row_load',l.category==='buses'?'Seating':'Load Capacity',l.load],['row_tyres','No. of Tyres',l.tyres?l.tyres+((l.highlights||[]).includes('New Tyres')?' (New Tyres)':''):''],['row_usage',usageLabel(l),usageFmt(l)],['row_engine','Engine',l.engine],['row_power','Power',l.power],['row_fuel','Fuel Type',l.fuel],['row_transmission','Transmission',l.transmission],...custom]
+    .filter(x => !hid(x[0]) && x[2] !== '' && x[2] != null);
+  const btnChat = hid('chat') ? '' : `<button class="btn btn-outline" data-chat>${I('msg')} Message with seller</button>`;
+  const btnFin = hid('finance') ? '' : `<a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance options</a>`;
   const ctas = mine
     ? (l.status==='removed' ? '' : `<a href="#/sell/${l.id}" class="btn btn-outline">${I('edit')} Edit listing</a><button class="btn btn-primary" data-sold>${I('check')} ${l.status==='sold'?'Mark as available':'Mark as sold'}</button>`)
-    : `<button class="btn btn-outline" data-chat>${I('msg')} Message with seller</button><a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance options</a><div class="note">Get best loan offers for this vehicle</div>`;
-  return { nav:'home', html: `${topbar({back:backTo, title:typeLabel(l), sub:'Vehicle Details', right:`${heartBtn(l.id,'icon-btn')}<button class="icon-btn" data-share aria-label="Share">${I('share')}</button>`})}
+    : `${btnChat}${btnFin}${btnFin ? '<div class="note">Get best loan offers for this vehicle</div>' : ''}`;
+  return { nav:'home', html: `${topbar({back:backTo, title:typeLabel(l), sub:'Vehicle Details', right:`${heartBtn(l.id,'icon-btn')}${hid('share')?'':`<button class="icon-btn" data-share aria-label="Share">${I('share')}</button>`}`})}
   <div class="wrap page">
     ${l.status==='sold'?`<div class="notice" style="background:var(--line-2);border-color:var(--line)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This vehicle is marked as sold.</b><br>Browse similar vehicles below.</div></div>`:''}
     ${l.status==='removed'?`<div class="notice" style="background:var(--primary-50);border-color:var(--primary-100)"><span class="n-ic">${I('info')}</span><div><b style="color:var(--ink)">This listing was removed by the Autoreboot team.</b><br>It is hidden from buyers.</div></div>`:''}
@@ -1456,30 +1682,30 @@ Views.details = ({id}) => {
       <div>
         <div class="gallery"><div class="g-main" data-main>${renderImg(imgs[0], l.title)}</div><span class="g-count" data-count>1 / ${imgs.length}</span>
           ${imgs.length>1?`<button class="g-nav l" data-prev aria-label="Previous photo">${I('left')}</button><button class="g-nav r" data-next aria-label="Next photo">${I('right')}</button>`:''}</div>
-        <div class="thumbs">${imgs.map((r,i)=>`<button class="${i===0?'on':''}" data-thumb="${i}" aria-label="Photo ${i+1}">${renderImg(r)}</button>`).join('')}</div>
+        ${hid('thumbs')?'':`<div class="thumbs">${imgs.map((r,i)=>`<button class="${i===0?'on':''}" data-thumb="${i}" aria-label="Photo ${i+1}">${renderImg(r)}</button>`).join('')}</div>`}
         <h1 class="det-title">${esc(l.title)}</h1>
         <div class="meta" style="font-size:15.5px">${[l.year, l.tyres?l.tyres+' Tyres':null, l.emission, typeLabel(l)].filter(Boolean).map(esc).join('<i></i>')}</div>
       </div>
       <aside class="card side-card">
         <div class="lbl">Price</div><div class="price">${inr(l.price)}</div><div style="font-weight:600;color:var(--ink-2)">${l.negotiable?'Negotiable':'Fixed price'}</div>
-        <a class="seller" href="#/seller/${seller.id}">${avatar(seller)}<div><b>${esc(seller.name)} ${seller.verified?`<span class="verified">${I('shieldCheck','xs')}</span>`:''}</b><div class="muted" style="font-size:13px">Member since ${monthYear(seller.createdAt)}</div></div></a>
-        ${seller.reviews?`<div class="stars" style="padding-bottom:14px">${I('star','sm')} ${seller.rating} <span class="muted">(${seller.reviews} Reviews)</span></div>`:''}
-        <div style="display:flex;align-items:center;gap:10px;padding-top:14px;border-top:1px solid var(--line);color:var(--ink-2)">${I('pin','sm')} ${esc(l.city)}, ${esc(l.state)}</div>
-        <div style="display:flex;align-items:center;gap:10px;padding-top:10px;color:var(--ink-3);font-size:13px">${I('eye','xs')} ${l.views||0} views</div>
-        ${mine?'':`<div class="side-ctas"><button class="btn btn-outline" data-chat>${I('msg')} Message seller</button><a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance</a></div>`}
+        ${hid('seller')?'':`<a class="seller" href="#/seller/${seller.id}">${avatar(seller)}<div><b>${esc(seller.name)} ${seller.verified?`<span class="verified">${I('shieldCheck','xs')}</span>`:''}</b><div class="muted" style="font-size:13px">Member since ${monthYear(seller.createdAt)}</div></div></a>`}
+        ${seller.reviews && !hid('rating') && !hid('seller')?`<div class="stars" style="padding-bottom:14px">${I('star','sm')} ${seller.rating} <span class="muted">(${seller.reviews} Reviews)</span></div>`:''}
+        ${hid('location')?'':`<div style="display:flex;align-items:center;gap:10px;padding-top:14px;border-top:1px solid var(--line);color:var(--ink-2)">${I('pin','sm')} ${esc(l.city)}, ${esc(l.state)}</div>`}
+        ${hid('views')?'':`<div style="display:flex;align-items:center;gap:10px;padding-top:10px;color:var(--ink-3);font-size:13px">${I('eye','xs')} ${l.views||0} views</div>`}
+        ${mine || (hid('chat') && hid('finance'))?'':`<div class="side-ctas">${hid('chat')?'':`<button class="btn btn-outline" data-chat>${I('msg')} Message seller</button>`}${hid('finance')?'':`<a href="#/finance/${l.id}" class="btn btn-primary">${I('bank')} Check finance</a>`}</div>`}
       </aside>
     </div>
-    <div class="card specs">${specs.filter(x=>x[2]!==''&&x[2]!=null).map(([ic,k,v])=>`<div class="spec">${I(ic)}<div style="min-width:0"><small>${esc(k)}</small><b>${esc(v)}</b></div></div>`).join('')}</div>
-    <div class="det-cols">
+    ${specs.length?`<div class="card specs">${specs.map(([,ic,k,v])=>`<div class="spec">${I(ic)}<div style="min-width:0"><small>${esc(k)}</small><b>${esc(v)}</b></div></div>`).join('')}</div>`:''}
+    <div class="det-cols${hid('details')||kv.length===0?' one':''}">
       <div style="display:flex;flex-direction:column;gap:16px">
-        <div class="card panel"><h3>Vehicle Highlights</h3>${(l.highlights||[]).length?(l.highlights).map(h=>`<div class="hl">${I('checkCircle','sm')} ${esc(h)}</div>`).join(''):'<p class="muted" style="margin:0">The seller has not added highlights.</p>'}</div>
-        <div class="card panel"><h3>Description</h3><p style="margin:0;white-space:pre-wrap;color:var(--ink-2)">${esc(l.description||'No description provided.')}</p></div>
+        ${hid('highlights')?'':`<div class="card panel"><h3>Vehicle Highlights</h3>${(l.highlights||[]).length?(l.highlights).map(h=>`<div class="hl">${I('checkCircle','sm')} ${esc(h)}</div>`).join(''):'<p class="muted" style="margin:0">The seller has not added highlights.</p>'}</div>`}
+        ${hid('description')?'':`<div class="card panel"><h3>Description</h3><p style="margin:0;white-space:pre-wrap;color:var(--ink-2)">${esc(l.description||'No description provided.')}</p></div>`}
       </div>
-      <div class="card panel"><h3>Vehicle Details</h3>${kv.map(([k,v])=>`<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>
+      ${hid('details')||!kv.length?'':`<div class="card panel"><h3>Vehicle Details</h3>${kv.map(([,k,v])=>`<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</div>`}
     </div>
-    <div class="posted"><div>${I('cal','xs')} Posted on ${dateLong(l.createdAt)}</div><div>${I('doc','xs')} Listing ID: ${esc(l.id)}</div></div>
-    <div class="cta-row">${ctas}</div>
-    ${similar.length?`<div class="sec-head"><h2>Similar vehicles</h2><a class="link" href="${backTo}">See all ${I('right','xs')}</a></div><div class="recent">${similar.map(miniCard).join('')}</div>`:''}
+    ${hid('posted')?'':`<div class="posted"><div>${I('cal','xs')} Posted on ${dateLong(l.createdAt)}</div><div>${I('doc','xs')} Listing ID: ${esc(l.id)}</div></div>`}
+    ${ctas?`<div class="cta-row">${ctas}</div>`:''}
+    ${similar.length && !hid('similar')?`<div class="sec-head"><h2>Similar vehicles</h2><a class="link" href="${backTo}">See all ${I('right','xs')}</a></div><div class="recent">${similar.map(miniCard).join('')}</div>`:''}
   </div>`,
   mount(root){
     if (!App.viewed.has(l.id)) { App.viewed.add(l.id); API.listings.view(l.id); }
@@ -1488,7 +1714,7 @@ Views.details = ({id}) => {
     $$('[data-thumb]',root).forEach(t=>t.onclick=()=>show(+t.dataset.thumb));
     const p=$('[data-prev]',root), nx=$('[data-next]',root); if(p){p.onclick=()=>show(i-1); nx.onclick=()=>show(i+1);}
     $('[data-main]',root).onclick=()=>lightbox(imgs,i); $('[data-main]',root).style.cursor='zoom-in';
-    $('[data-share]',root).onclick = async () => {
+    const shareBtn = $('[data-share]',root); if (shareBtn) shareBtn.onclick = async () => {
       const url = location.href; const data={title:l.title, text:`${l.title} for ${inr(l.price)} on Autoreboot`, url};
       try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(url); toast('Link copied'); } } catch(e){ if(e.name!=='AbortError') toast('Could not share this link','bad'); }
     };
@@ -1590,7 +1816,6 @@ Views.messages = () => {
 };
 
 /* ---- finance ---- */
-function emiCalc(P, annualRate, months){ const r=annualRate/12/100; return r ? Math.round(P*r*Math.pow(1+r,months)/(Math.pow(1+r,months)-1)) : Math.round(P/months); }
 Views.finance = ({id}) => {
   const l = API.listings.get(id); if (!l) return Views.notFound();
   const me = API.auth.me();
@@ -1606,15 +1831,12 @@ Views.finance = ({id}) => {
       <div class="perk"><span class="p-ic">${I('bolt')}</span><b>Quick Process</b>Our team will contact you shortly</div>
       <div class="perk"><span class="p-ic">${I('lock')}</span><b>Privacy First</b>Your data is not shared with finance companies</div>
     </div>
-    <div class="card emi"><div style="display:flex;justify-content:space-between;align-items:flex-end;gap:10px;flex-wrap:wrap"><div><div class="muted" style="font-weight:600;font-size:13px">Estimated EMI</div><div class="big" data-emi>—</div></div><div class="muted" style="font-size:13px" data-emi-note></div></div>
-      <label style="display:block;margin-top:12px;font-weight:600;font-size:13.5px">Down payment <span data-dp-v></span></label><input type="range" min="10" max="60" step="5" value="20" data-dp>
-      <label style="display:block;margin-top:8px;font-weight:600;font-size:13.5px">Tenure <span data-tn-v></span></label><input type="range" min="12" max="60" step="6" value="48" data-tn>
-      <div class="row"><span>Indicative rate 11.5% p.a.</span><span>Final offer depends on lender</span></div></div>
     <form class="card panel" data-form novalidate>
       <h3 style="margin-bottom:2px">Fill your details</h3><p class="muted" style="margin:0 0 16px;font-size:14px">We will connect you with the best finance assistance.</p>
       ${field('name','user','Full Name','text','Enter your full name', me?.name||'', 'autocomplete="name"')}
       ${field('age','cal','Age','number','Enter your age','', 'inputmode="numeric" min="18" max="75"')}
       ${field('mobile','phone','Mobile Number','tel','Enter your 10 digit mobile number', me?.phone||'', 'inputmode="numeric" maxlength="10" autocomplete="tel"')}
+      ${field('email','msg','Email (Gmail)','email','you@gmail.com', me?.email||'', 'autocomplete="email" maxlength="120"')}
       ${field('city','building','City','text','Enter your city', me?.city||'')}
       ${field('state','map','State','select','', me?.state||'')}
       ${field('pincode','pin','Pincode','text','Enter your pincode','', 'inputmode="numeric" maxlength="6"')}
@@ -1624,10 +1846,6 @@ Views.finance = ({id}) => {
     </form>
   </div>`,
   mount(root){
-    const dp=$('[data-dp]',root), tn=$('[data-tn]',root);
-    const upd=()=>{ const down=Math.round(l.price*dp.value/100); const emi=emiCalc(l.price-down, 11.5, +tn.value);
-      $('[data-emi]',root).textContent=inr(emi)+'/month'; $('[data-dp-v]',root).textContent=`· ${dp.value}% (${inrShort(down)})`; $('[data-tn-v]',root).textContent=`· ${tn.value} months`; $('[data-emi-note]',root).textContent=`Loan amount ${inrShort(l.price-down)}`; };
-    dp.oninput=tn.oninput=upd; upd();
     const form=$('[data-form]',root);
     $$('input,select',form).forEach(i=>i.addEventListener('input',()=>{ const k=i.name; $(`[data-ctl="${k}"]`,form)?.classList.remove('err'); const e=$(`[data-err="${k}"]`,form); if(e) e.hidden=true; }));
     ['mobile','pincode','age'].forEach(k=>{ const i=$(`[name="${k}"]`,form); i.addEventListener('input',()=>{ i.value=i.value.replace(/\D/g,''); }); });
@@ -1931,10 +2149,10 @@ Views.auth = (_, q, mode='login', role='user') => {
 };
 /* ---- owner console ---- */
 Views.owner = ({tab='overview'}) => {
-  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests'],['banners','Banners'],['form','Sell form']];
+  const TABS = [['overview','Overview'],['users','Users'],['listings','Listings'],['finance','Finance requests'],['layout','Listing page'],['banners','Banners'],['form','Sell form']];
   const me = API.auth.me();
   return { nav:'owner', html: `${topbar({title:'Owner dashboard', sub:`Signed in as ${me.email}`, right:`<button class="btn btn-ghost btn-sm" data-ologout>${I('logout','xs')} Log out</button>`})}
-    <div class="wrap page"><div class="ptabs">${TABS.map(([k,n])=>`<a class="chip ${tab===k?'on':''}" href="#/owner/${k}">${n}</a>`).join('')}</div>
+    <div class="wrap page"><div class="ptabs">${TABS.map(([k,n])=>`<a class="chip ${tab===k?'on':''}" href="#/owner/${k}">${n}${k==='finance'&&Store.ownerCounts.financeNew?` <span class="count-pill">${Store.ownerCounts.financeNew}</span>`:''}</a>`).join('')}</div>
     <div data-obody><p class="muted" style="text-align:center;padding:40px 0">Loading…</p></div></div>`,
   mount(root){
     $('[data-ologout]',root).onclick = async () => { await API.auth.logout(); toast('Logged out'); go('#/owner/login'); };
@@ -2011,11 +2229,31 @@ Views.owner = ({tab='overview'}) => {
       const label = {new:'New', contacted:'Contacted', closed:'Closed'};
       body.innerHTML = rows.length ? rows.map(r => `<div class="card my-row" data-fid="${esc(r.id)}"><div class="mid"><h4>${esc(r.listingTitle)}</h4>
         <div class="muted" style="font-size:13px">${esc(r.name)} (age ${r.age}) · <a class="link" href="tel:${esc(r.mobile)}">${esc(r.mobile)}</a> · ${esc(r.city)}, ${esc(r.state)} ${esc(r.pincode)}</div>
-        <div class="muted" style="font-size:12.5px">${esc(r.userEmail)} · submitted ${ago(r.createdAt)}</div></div>
+        <div class="muted" style="font-size:13px">${I('msg','xs')} <a class="link" href="mailto:${esc(r.email||r.userEmail)}">${esc(r.email || r.userEmail)}</a> <span class="status ${r.mailStatus==='sent'?'active':r.mailStatus==='failed'?'removed':'new'}" title="${r.mailStatus==='sent'?'E-mail alert sent to you':r.mailStatus==='failed'?'The e-mail alert could not be sent':'E-mail alerts are not set up (see README)'}">${r.mailStatus==='sent'?'Mail sent':r.mailStatus==='failed'?'Mail failed':'No mail'}</span></div>
+        <div class="muted" style="font-size:12.5px">Account: ${esc(r.userEmail)} · submitted ${ago(r.createdAt)}</div></div>
         <div class="acts"><select class="input" data-fs aria-label="Request status" style="height:38px;width:auto">${Object.entries(label).map(([k,n])=>`<option value="${k}" ${r.status===k?'selected':''}>${n}</option>`).join('')}</select></div></div>`).join('')
         : emptyState('bank','No finance requests yet','Requests from buyers appear here.');
-      $$('[data-fs]',body).forEach(s => s.onchange = async () => { await act(() => API.owner.patchFinance(s.closest('[data-fid]').dataset.fid, s.value), 'Status updated'); });
+      $$('[data-fs]',body).forEach(s => s.onchange = async () => { await act(() => API.owner.patchFinance(s.closest('[data-fid]').dataset.fid, s.value), 'Status updated'); Sync.pull().catch(()=>{}); });
     }).catch(fail);
+
+    if (tab === 'layout'){
+      let blocks = [], hidden = new Set();
+      const draw = () => {
+        const groups = [...new Set(blocks.map(b => b.group))];
+        body.innerHTML = `<div class="card panel" style="margin-bottom:6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div class="grow" style="min-width:220px"><b>Vehicle page layout</b><div class="muted" style="font-size:13px">Choose which parts of the vehicle details page buyers see. Untick to hide, tick to show. Changes apply to every listing immediately.</div></div>
+          <button class="btn btn-ghost btn-sm" data-showall>Show everything</button></div>`
+          + groups.map(g => `<h3 style="margin:18px 0 8px;font-size:15px">${esc(g)}</h3><div class="card" style="padding:6px 16px">${blocks.filter(b => b.group === g).map(b => `<label class="lay-row"><span>${esc(b.label)}</span><span class="toggle ${hidden.has(b.key)?'':'on'}"></span><input type="checkbox" hidden data-k="${esc(b.key)}" ${hidden.has(b.key)?'':'checked'}></label>`).join('')}</div>`).join('');
+      };
+      API.owner.layout().then(r => { blocks = r.blocks; hidden = new Set(r.hidden); draw(); }).catch(fail);
+      const save = msg => API.owner.saveLayout([...hidden]).then(() => { toast(msg); }).catch(e => { toast(e.message,'bad'); API.owner.layout().then(r => { hidden = new Set(r.hidden); draw(); }); });
+      body.onclick = e => {
+        if (e.target.closest('[data-showall]')){ hidden.clear(); draw(); return save('All blocks shown'); }
+        const row = e.target.closest('.lay-row'); if (!row) return; e.preventDefault();
+        const k = $('input',row).dataset.k; hidden.has(k) ? hidden.delete(k) : hidden.add(k);
+        $('.toggle',row).classList.toggle('on', !hidden.has(k)); $('input',row).checked = !hidden.has(k);
+        save(hidden.has(k) ? 'Hidden from vehicle pages' : 'Shown on vehicle pages');
+      };
+    }
 
     if (tab === 'banners'){
       let list = [];
